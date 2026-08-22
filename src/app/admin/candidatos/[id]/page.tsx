@@ -266,6 +266,29 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
           </Section>
 
           <div className="bg-white border border-neutral-200 p-8 mb-6 rounded-lg shadow-sm">
+            <h3 className="text-sm font-bold text-humania-gray/50 border-b border-neutral-100 pb-3 mb-6 tracking-widest">VALIDACIÓN SIMIT</h3>
+            {candidato.simit_estado ? (
+              <div className="grid md:grid-cols-2 gap-y-6 gap-x-12">
+                <div className="flex items-center gap-2">
+                  <StatusIcon status={candidato.simit_estado === 'APROBADO' ? 'PASS' : candidato.simit_estado === 'DESCARTADO' ? 'FAIL' : 'PENDING_VERIFICATION'} />
+                  <StatusColorText
+                    status={candidato.simit_estado === 'APROBADO' ? 'PASS' : candidato.simit_estado === 'DESCARTADO' ? 'FAIL' : 'PENDING_VERIFICATION'}
+                    text={candidato.simit_estado === 'APROBADO' ? 'Aprobado' : candidato.simit_estado === 'DESCARTADO' ? 'Descartado por multas' : 'No se pudo consultar'}
+                  />
+                </div>
+                <DataPoint label="Cantidad de Multas" value={candidato.simit_number_fines} />
+                <DataPoint
+                  label="Monto Total"
+                  value={typeof candidato.simit_total_fines === 'number' ? `$${candidato.simit_total_fines.toLocaleString('es-CO')}` : null}
+                />
+                <DataPoint label="Fecha de Consulta" value={candidato.simit_consultado_at ? new Date(candidato.simit_consultado_at).toLocaleString() : null} />
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-500 font-medium">Postulación anterior a esta validación — sin consulta SIMIT registrada.</p>
+            )}
+          </div>
+
+          <div className="bg-white border border-neutral-200 p-8 mb-6 rounded-lg shadow-sm">
              <h3 className="text-sm font-bold text-humania-gray/50 border-b border-neutral-100 pb-3 mb-6 tracking-widest">FIADOR SOLIDARIO</h3>
              {fiador ? (
                <div className="grid md:grid-cols-2 gap-y-6 gap-x-12">

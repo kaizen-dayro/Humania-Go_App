@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { ApplicationPayloadSchema, evaluateInitialEligibility } from '@/lib/domain/eligibility'
 import { sendCandidateEmail } from '@/lib/services/email'
+import { checkSimitFines } from '@/lib/services/simit'
 
 // Usamos supabase-js genérico con la clave de servicio
 const supabaseAdmin = createClient(
@@ -39,6 +40,16 @@ export async function POST(req: NextRequest) {
     // 2. Reglas de Negocio / Eligibility
     const eligibilityResult = evaluateInitialEligibility(data)
 
+    // 2b. Validación de multas SIMIT (fail-open: un fallo/timeout/límite de
+    // consultas de la API externa no bloquea ni descarta al candidato).
+    const simitResult = await checkSimitFines(data.numero_documento)
+    const razones = [...eligibilityResult.razones]
+    let estadoFinal = eligibilityResult.estado
+    if (simitResult.simit_estado === 'DESCARTADO') {
+      estadoFinal = 'DESCARTADO'
+      razones.push('SIMIT_MULTAS_EXCEDEN_LIMITE')
+    }
+
     const candidatoData = {
       activo_id: data.activo_id,
       nombres: data.nombres,
@@ -58,7 +69,12 @@ export async function POST(req: NextRequest) {
       licencia_declarada_vigente: data.licencia_declarada_vigente,
       licencia_categorias: data.licencia_categorias,
       cantidad_comparendos_declarados: data.cantidad_comparendos_declarados,
-      estado: eligibilityResult.estado
+      estado: estadoFinal,
+      simit_estado: simitResult.simit_estado,
+      simit_number_fines: simitResult.simit_number_fines,
+      simit_total_fines: simitResult.simit_total_fines,
+      simit_consultado_at: simitResult.simit_consultado_at,
+      simit_respuesta_raw: simitResult.simit_respuesta_raw
     }
 
     // 3. Operación Transaccional en PostgreSQL
@@ -126,8 +142,8 @@ export async function POST(req: NextRequest) {
       success: true,
       data: {
         id: candidateId,
-        estado_preliminar: eligibilityResult.estado,
-        razones: eligibilityResult.razones
+        estado_preliminar: estadoFinal,
+        razones
       }
     }, { status: 201 })
 
