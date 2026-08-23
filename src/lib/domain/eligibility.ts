@@ -213,6 +213,19 @@ export function evaluateCandidateRequirements(data: any): RequirementEvaluation[
     evaluations.push({ requirement: 'COMPARENDOS', status: 'FAIL', label: 'Exceso de comparendos', reason: `${data.cantidad_comparendos_declarados} reportados (límite: 2)` });
   }
 
+  // Comparendos vs. SIMIT: el candidato declara una cantidad en el
+  // formulario; la API de SIMIT reporta la cantidad real al momento del
+  // envío. Deben coincidir — una diferencia es una alerta para el equipo
+  // humano (no un descarte automático, eso ya lo resuelve NUMBER_FINES
+  // en /api/apply).
+  if (data.simit_number_fines === null || data.simit_number_fines === undefined) {
+    evaluations.push({ requirement: 'COMPARENDOS_SIMIT', status: 'NA', label: 'Comparendos vs. SIMIT', reason: 'No se pudo consultar SIMIT al momento del envío' });
+  } else if (data.simit_number_fines === data.cantidad_comparendos_declarados) {
+    evaluations.push({ requirement: 'COMPARENDOS_SIMIT', status: 'PASS', label: 'Comparendos vs. SIMIT', reason: `Coincide con lo declarado (${data.cantidad_comparendos_declarados})` });
+  } else {
+    evaluations.push({ requirement: 'COMPARENDOS_SIMIT', status: 'FAIL', label: 'Comparendos vs. SIMIT no coinciden', reason: `SIMIT reporta ${data.simit_number_fines}; el candidato declaró ${data.cantidad_comparendos_declarados}` });
+  }
+
   // Referencias
   const refs = data.referencias || [];
   const hasFamiliar = refs.some((r: any) => r.tipo_referencia === 'FAMILIAR');

@@ -2,8 +2,7 @@ const SIMIT_API_BASE = 'https://humania-go-api.vercel.app/api/check-fines'
 const SIMIT_TIMEOUT_MS = 8000
 
 // Umbral de multas permitidas (más de este número descarta al candidato).
-// En modo de prueba: 0 (cualquier multa descarta). Ajustar a 3 en producción.
-export const NUMBER_FINES = 0
+export const NUMBER_FINES = 3
 
 export type SimitResult = {
   simit_estado: 'APROBADO' | 'DESCARTADO' | 'NO_CONSULTADO'
