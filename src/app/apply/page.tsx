@@ -732,7 +732,7 @@ function ApplyForm() {
                 <div className="space-y-3">
                   <Label className="text-humania-gray font-medium">¿Cuántos comparendos estimas tener pendientes?</Label>
                   <Input name="cantidad_comparendos_declarados" maxLength={2} value={formData.cantidad_comparendos_declarados} onChange={handleChange} placeholder="Ej. 0" className={inputClass('cantidad_comparendos_declarados')} />
-                  <p className="text-xs text-humania-gray/70 font-medium mt-1">La cantidad de comparendos vigentes será tenida en cuenta durante el proceso de selección. Las postulaciones con más de 2 comparendos pueden no ser elegibles.</p>
+                  <p className="text-xs text-humania-gray/70 font-medium mt-1">La cantidad de comparendos vigentes será tenida en cuenta durante el proceso de selección. Las postulaciones con más de 3 comparendos pueden no ser elegibles.</p>
                   <ErrorMsg name="cantidad_comparendos_declarados" errors={errors} />
                 </div>
               </div>

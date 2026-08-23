@@ -3,7 +3,7 @@ const SIMIT_TIMEOUT_MS = 8000
 
 // Umbral de multas permitidas (más de este número descarta al candidato).
 // Alineado con el límite de comparendos ya usado en evaluateCandidateRequirements.
-export const NUMBER_FINES = 2
+export const NUMBER_FINES = 3
 
 export type SimitResult = {
   simit_estado: 'APROBADO' | 'DESCARTADO' | 'NO_CONSULTADO'

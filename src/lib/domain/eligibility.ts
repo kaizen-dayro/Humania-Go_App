@@ -178,7 +178,7 @@ export function evaluateInitialEligibility(data: ApplicationPayload): Eligibilit
   const razones: string[] = []
 
   if (!data.licencia_declarada_vigente) razones.push("LICENCIA_NO_VIGENTE_DECLARADA")
-  if (data.cantidad_comparendos_declarados > 2) razones.push("EXCESO_COMPARENDOS_DECLARADOS")
+  if (data.cantidad_comparendos_declarados > 3) razones.push("EXCESO_COMPARENDOS_DECLARADOS")
   if (!data.fiador) razones.push("FIADOR_NO_PROPORCIONADO")
   else if (!INGRESOS_PASS.has(data.fiador.ingresos_mensuales_aprox)) razones.push("FIADOR_INGRESOS_INSUFICIENTES")
 
@@ -207,10 +207,10 @@ export function evaluateCandidateRequirements(data: any): RequirementEvaluation[
   }
 
   // Comparendos
-  if (data.cantidad_comparendos_declarados <= 2) {
+  if (data.cantidad_comparendos_declarados <= 3) {
     evaluations.push({ requirement: 'COMPARENDOS', status: 'PASS', label: 'Comparendos dentro del límite', reason: `${data.cantidad_comparendos_declarados} reportados` });
   } else {
-    evaluations.push({ requirement: 'COMPARENDOS', status: 'FAIL', label: 'Exceso de comparendos', reason: `${data.cantidad_comparendos_declarados} reportados (límite: 2)` });
+    evaluations.push({ requirement: 'COMPARENDOS', status: 'FAIL', label: 'Exceso de comparendos', reason: `${data.cantidad_comparendos_declarados} reportados (límite: 3)` });
   }
 
   // Comparendos vs. SIMIT: el candidato declara una cantidad en el
