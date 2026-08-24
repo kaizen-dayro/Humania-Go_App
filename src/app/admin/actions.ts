@@ -4,7 +4,34 @@ import { createClient } from '@/utils/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { sendCandidateEmail } from '@/lib/services/email'
-import { PHONE_CO } from '@/lib/validation'
+import { PHONE_CO, LETTERS_ONLY, LETTERS_WITH_PUNCTUATION } from '@/lib/validation'
+
+/** Fase 13 (Documento 17/18): segunda validacion server-side, min/max/charset. */
+function esTextoValido(v: string | null | undefined, regex: RegExp, min: number, max: number): boolean {
+  const t = v?.trim() || ''
+  return t.length >= min && t.length <= max && regex.test(t)
+}
+
+/**
+ * Fase 13 (Documento 17/18, migracion 00031): nombre de modelo alfanumerico
+ * (letras, numeros, espacios; sin caracteres especiales), min 4 / max 21
+ * -- min ajustado desde 5 por el modelo real "Atos" (4 caracteres), decision
+ * de Dayro 2026-08-23. Sin capitalizacion forzada a proposito: nombres
+ * reales como "SANDERO"/"YBR 125" no deben reescribirse.
+ */
+const MODELO_NOMBRE_REGEX = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]+$/
+
+/**
+ * Fase 13 (Documento 17/18, migracion 00031): image_url acepta una URL
+ * externa completa (http/https) o una ruta relativa interna (empieza por
+ * "/"), decision de Dayro 2026-08-23 alineada con el placeholder ya
+ * existente del formulario. Vacio siempre es valido (campo opcional).
+ */
+function esImageUrlValida(v: string | null | undefined): boolean {
+  const t = v?.trim() || ''
+  if (!t) return true
+  return /^(https?:\/\/.+|\/.+)$/.test(t)
+}
 
 /**
  * Cliente con Secret key: exclusivamente server-side, para operaciones que
@@ -35,6 +62,11 @@ export async function registrarActivoFoto(
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return { success: false, error: 'No autorizado' }
+
+  const descripcionTrim = descripcion?.trim() || ''
+  if (descripcionTrim && !esTextoValido(descripcionTrim, LETTERS_ONLY, 10, 111)) {
+    return { success: false, error: 'La descripción, si se completa, debe tener entre 10 y 111 caracteres, solo letras y espacios.' }
+  }
 
   const { error } = await supabase.rpc('registrar_activo_foto', {
     p_activo_id: activoId,
@@ -237,9 +269,15 @@ export async function createModelo(formData: FormData) {
   if (!tipo_id || !marca_id || !nombre) {
     return { success: false, error: 'Faltan campos obligatorios' }
   }
+  if (!esTextoValido(nombre, MODELO_NOMBRE_REGEX, 4, 21)) {
+    return { success: false, error: 'El nombre del modelo debe tener entre 4 y 21 caracteres (letras, números y espacios, sin caracteres especiales).' }
+  }
+  if (!esImageUrlValida(image_url)) {
+    return { success: false, error: 'La URL de imagen debe ser una ruta interna (que empiece por /) o una URL completa (http:// o https://).' }
+  }
 
   const { error } = await supabase.from('modelos_vehiculo').insert({
-    tipo_id, marca_id, nombre, image_url: image_url || null
+    tipo_id, marca_id, nombre, image_url: image_url?.trim() || null
   })
   if (error) {
     console.error('Error creando modelo:', error)
@@ -261,14 +299,23 @@ export async function updateModelo(modeloId: string, formData: FormData) {
   const marca_id = formData.get('marca_id') as string
   const nombre = (formData.get('nombre') as string)?.trim()
   const image_url = formData.get('image_url') as string
-  const activo = formData.get('activo') === 'true'
 
   if (!tipo_id || !marca_id || !nombre) {
     return { success: false, error: 'Faltan campos obligatorios' }
   }
+  if (!esTextoValido(nombre, MODELO_NOMBRE_REGEX, 4, 21)) {
+    return { success: false, error: 'El nombre del modelo debe tener entre 4 y 21 caracteres (letras, números y espacios, sin caracteres especiales).' }
+  }
+  if (!esImageUrlValida(image_url)) {
+    return { success: false, error: 'La URL de imagen debe ser una ruta interna (que empiece por /) o una URL completa (http:// o https://).' }
+  }
 
+  // Fase 13 (Documento 17 sección 8): "activo" YA NO se toca desde aquí --
+  // se separó a su propia RPC (set_modelo_activo, vía Server Action
+  // setModeloActivo) para que el historial de activación nunca se registre
+  // por editar nombre/marca/tipo/imagen.
   const { error } = await supabase.from('modelos_vehiculo').update({
-    tipo_id, marca_id, nombre, image_url: image_url || null, activo
+    tipo_id, marca_id, nombre, image_url: image_url?.trim() || null
   }).eq('id', modeloId)
   if (error) {
     console.error('Error actualizando modelo:', error)
@@ -330,6 +377,9 @@ export async function updateAsset(activoId: string, formData: FormData) {
   if (!estado || !estado_fisico?.trim()) {
     return { success: false, error: 'Faltan campos obligatorios (Estado y Estado Físico son obligatorios)' }
   }
+  if (!esTextoValido(estado_fisico, LETTERS_ONLY, 10, 111)) {
+    return { success: false, error: 'El Estado Físico debe tener entre 10 y 111 caracteres, solo letras y espacios.' }
+  }
   if (estado === 'ASIGNADO' || estado === 'TRANSFERIDO') {
     return { success: false, error: 'ASIGNADO y TRANSFERIDO solo pueden establecerse desde el flujo contractual del candidato.' }
   }
@@ -386,6 +436,9 @@ export async function createAsset(formData: FormData) {
 
   if (!modelo_id || !estado || !estado_fisico?.trim()) {
     return { success: false, error: 'Faltan campos obligatorios (Estado y Estado Físico son obligatorios)' }
+  }
+  if (!esTextoValido(estado_fisico, LETTERS_ONLY, 10, 111)) {
+    return { success: false, error: 'El Estado Físico debe tener entre 10 y 111 caracteres, solo letras y espacios.' }
   }
   if (estado === 'ASIGNADO' || estado === 'TRANSFERIDO') {
     return { success: false, error: 'ASIGNADO y TRANSFERIDO solo pueden establecerse desde el flujo contractual del candidato.' }
@@ -804,10 +857,28 @@ export async function saveReferenciaLaboral(
   const opcionOInt = (v: string) => (v ? parseInt(v) : null)
   const textoOTrim = (v: string) => v?.trim() || null
 
+  /**
+   * Fase 13 (Documento 17/18): segunda validacion server-side de formato
+   * y longitud para los 5 campos endurecidos en la migracion 00028, antes
+   * de que PostgreSQL sea la ultima barrera. Un valor no vacio que no
+   * cumple min/max/charset se guarda como null (no se envia a la base de
+   * datos) en vez de dejar que el CHECK de Postgres rechace todo el
+   * guardado con un error crudo -- consistente con "Guardar y continuar
+   * después" (sin validar) mientras el campo sigue incompleto; al
+   * finalizar, un valor null ya cae naturalmente en missingFields de
+   * abajo, con el mismo mensaje claro que un campo vacio.
+   */
+  const textoConReglas = (v: string, regex: RegExp, min: number, max: number): string | null => {
+    const t = v?.trim()
+    if (!t) return null
+    if (t.length < min || t.length > max || !regex.test(t)) return null
+    return t
+  }
+
   const payload: Record<string, unknown> = {
-    contacto_nombre: textoOTrim(formValues.contacto_nombre),
-    contacto_empresa: textoOTrim(formValues.contacto_empresa),
-    contacto_cargo: textoOTrim(formValues.contacto_cargo),
+    contacto_nombre: textoConReglas(formValues.contacto_nombre, LETTERS_ONLY, 5, 33),
+    contacto_empresa: textoConReglas(formValues.contacto_empresa, LETTERS_ONLY, 5, 33),
+    contacto_cargo: textoConReglas(formValues.contacto_cargo, LETTERS_ONLY, 5, 33),
     contacto_relacion: formValues.contacto_relacion || null,
     contacto_telefono: textoOTrim(formValues.contacto_telefono),
     responsabilidad: opcionOInt(formValues.responsabilidad),
@@ -819,8 +890,8 @@ export async function saveReferenciaLaboral(
     relaciones: opcionOInt(formValues.relaciones),
     pregunta_confianza: opcionOInt(formValues.pregunta_confianza),
     recontratacion: opcionOInt(formValues.recontratacion),
-    destacaria_trabajador: textoOTrim(formValues.destacaria_trabajador)?.slice(0, 500) || null,
-    observaciones_previas: textoOTrim(formValues.observaciones_previas)?.slice(0, 500) || null,
+    destacaria_trabajador: textoConReglas(formValues.destacaria_trabajador, LETTERS_WITH_PUNCTUATION, 10, 111),
+    observaciones_previas: textoConReglas(formValues.observaciones_previas, LETTERS_WITH_PUNCTUATION, 10, 111),
   }
 
   const esCorreccion = currentEstado === 'COMPLETADA'
@@ -1018,5 +1089,156 @@ export async function setAdminActivo(adminId: string, activo: boolean, motivo: s
   }
 
   revalidatePath('/admin/administradores')
+  return { success: true }
+}
+
+/**
+ * Fase 13 (Documento 17 sección 8, migración 00032): activa/desactiva un
+ * modelo, separado del resto de edición. La RPC set_modelo_activo es la
+ * autoridad final: exige admin, motivo, y solo registra historial si el
+ * valor realmente cambia.
+ */
+export async function setModeloActivo(modeloId: string, activo: boolean, motivo: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('set_modelo_activo', {
+    p_modelo_id: modeloId,
+    p_activo: activo,
+    p_motivo: motivo
+  })
+
+  if (error) {
+    console.error('Error activando/desactivando modelo:', error)
+    return { success: false, error: error.message || 'No se pudo actualizar el estado del modelo.' }
+  }
+
+  revalidatePath('/admin/modelos')
+  revalidatePath(`/admin/modelos/${modeloId}/editar`)
+  return { success: true }
+}
+
+/**
+ * Historial de activación/desactivación de un modelo (Fase 13), resolviendo
+ * el correo del administrador responsable de cada evento -- mismo patrón
+ * que getCandidateStatusHistory.
+ */
+export async function getModeloActivacionHistory(modeloId: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado', historial: [] }
+
+  const { data: historial, error } = await supabase
+    .from('modelo_activacion_history')
+    .select('id, accion, descripcion, realizado_por, created_at')
+    .eq('modelo_id', modeloId)
+    .order('created_at', { ascending: false })
+
+  if (error || !historial) {
+    console.error('Error obteniendo historial del modelo:', error)
+    return { success: false, error: 'No se pudo cargar el historial', historial: [] }
+  }
+
+  const serviceClient = getServiceClient()
+  const usuarioIds = [...new Set(historial.map(h => h.realizado_por))]
+  const emailPorUsuario: Record<string, string> = {}
+  await Promise.all(usuarioIds.map(async (uid) => {
+    const { data } = await serviceClient.auth.admin.getUserById(uid)
+    if (data?.user?.email) emailPorUsuario[uid] = data.user.email
+  }))
+
+  return {
+    success: true,
+    historial: historial.map(h => ({ ...h, usuario_email: emailPorUsuario[h.realizado_por] || 'Administrador' }))
+  }
+}
+
+/**
+ * Recuperación de contraseña de administradores (Fase 13, Documento 17
+ * sección 9, Documento 18 sección 16.3). Solo tiene efecto real para un
+ * SUPER_ADMIN -- RLS en admin_password_recovery_requests ya restringe el
+ * SELECT a is_super_admin(), y las RPC de aprobar/rechazar exigen lo mismo
+ * server-side; un ADMIN que llame estas funciones simplemente no ve filas
+ * o recibe el error de la RPC.
+ */
+export async function listarSolicitudesRecuperacionPendientes() {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, solicitudes: [] }
+
+  const { data, error } = await supabase
+    .from('admin_password_recovery_requests')
+    .select('id, correo, solicitado_en, admin_users(nombre)')
+    .eq('estado', 'PENDIENTE')
+    .order('solicitado_en', { ascending: true })
+
+  if (error) {
+    console.error('Error listando solicitudes de recuperación:', error)
+    return { success: false, solicitudes: [] }
+  }
+
+  return { success: true, solicitudes: data || [] }
+}
+
+export async function aprobarRecuperacionAction(solicitudId: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { data: solicitud } = await supabase
+    .from('admin_password_recovery_requests')
+    .select('correo')
+    .eq('id', solicitudId)
+    .single()
+  if (!solicitud) return { success: false, error: 'Solicitud no encontrada.' }
+
+  const { error: rpcErr } = await supabase.rpc('aprobar_recuperacion_password', { p_solicitud_id: solicitudId })
+  if (rpcErr) {
+    console.error('Error aprobando recuperación:', rpcErr)
+    return { success: false, error: rpcErr.message || 'No se pudo aprobar la solicitud.' }
+  }
+
+  // Mecanismo nativo de Supabase Auth (regla no negociable #9: nunca un
+  // token propio). Se usa el cliente de Secret Key porque resetPasswordForEmail
+  // no depende de RLS ni de sesión -- es el mismo patrón que inviteUserByEmail.
+  const serviceClient = getServiceClient()
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+  const { error: sendErr } = await serviceClient.auth.resetPasswordForEmail(solicitud.correo, {
+    redirectTo: `${siteUrl}/crear-password`
+  })
+
+  if (sendErr) {
+    console.error('Error enviando correo de recuperación:', sendErr)
+    // Error real, nunca genérico (regla de este proyecto) -- la solicitud
+    // ya quedó APROBADA en base de datos, así que se puede reintentar el
+    // envío sin perder el estado de aprobación.
+    if ((sendErr as any)?.code === 'over_email_send_rate_limit') {
+      return { success: false, error: 'La solicitud quedó aprobada, pero se alcanzó el límite de envío de correos de Supabase. Espera unos minutos e inténtalo de nuevo, o configura un SMTP propio.' }
+    }
+    return { success: false, error: `La solicitud quedó aprobada, pero no se pudo enviar el correo: ${sendErr.message}` }
+  }
+
+  const { error: marcarErr } = await supabase.rpc('marcar_correo_recuperacion_enviado', { p_solicitud_id: solicitudId })
+  if (marcarErr) {
+    console.error('Aviso: correo enviado pero no se pudo marcar correo_enviado_en:', marcarErr)
+  }
+
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function rechazarRecuperacionAction(solicitudId: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('rechazar_recuperacion_password', { p_solicitud_id: solicitudId })
+  if (error) {
+    console.error('Error rechazando recuperación:', error)
+    return { success: false, error: error.message || 'No se pudo rechazar la solicitud.' }
+  }
+
+  revalidatePath('/admin')
   return { success: true }
 }

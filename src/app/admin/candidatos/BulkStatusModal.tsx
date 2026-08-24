@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { bulkChangeCandidateState } from '../actions'
+import { LETTERS_ONLY, capitalizarPalabras } from '@/lib/validation'
 
 // Misma matriz de transiciones que protege bulk_change_candidate_status en PostgreSQL
 // (la base de datos es la autoridad final; esto solo evita mostrar opciones invalidas).
@@ -57,13 +58,21 @@ export function BulkStatusModal({
   const estadoComun = estadosUnicos.length === 1 ? estadosUnicos[0] : null
   const opcionesDisponibles = estadoComun ? (TRANSICIONES_VALIDAS[estadoComun] || []) : []
 
+  function handleMotivoChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    if (!LETTERS_ONLY.test(e.target.value)) return
+    const input = e.target
+    const cursorPos = input.selectionStart
+    setMotivo(capitalizarPalabras(input.value))
+    requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
+  }
+
   const handleSave = async () => {
     if (!newState) {
       setError('Selecciona el nuevo estado.')
       return
     }
-    if (!motivo.trim()) {
-      setError('El motivo es obligatorio.')
+    if (motivo.trim().length < 10) {
+      setError('El motivo debe tener al menos 10 caracteres.')
       return
     }
     setError('')
@@ -124,10 +133,12 @@ export function BulkStatusModal({
               <div className="space-y-2">
                 <label className="text-sm font-medium">Motivo (Obligatorio)</label>
                 <Textarea
-                  placeholder="Ej. Cumple con perfil inicial, Se rechaza por antecedentes..."
+                  placeholder="Escribe el motivo... (mínimo 10 caracteres)"
                   value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
+                  onChange={handleMotivoChange}
+                  maxLength={111}
                 />
+                <p className="text-xs text-neutral-400 text-right">{motivo.length}/111</p>
               </div>
 
               {error && <p className="text-red-600 text-sm">{error}</p>}

@@ -1,6 +1,8 @@
 import { createClient } from '@/utils/supabase/server'
 import Link from 'next/link'
 import { LayoutDashboard, Users, Car, Tag, Layers, ShieldCheck, LogOut } from 'lucide-react'
+import { RecuperacionNotificacion } from './RecuperacionNotificacion'
+import { listarSolicitudesRecuperacionPendientes } from './actions'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -20,6 +22,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .eq('id', session.user.id)
     .single()
   const esSuperAdmin = caller?.role === 'SUPER_ADMIN'
+
+  // Fase 13 (Documento 17 sección 9.3): solicitudes de recuperación de
+  // contraseña pendientes, solo relevantes para SUPER_ADMIN. RLS ya
+  // restringe el SELECT a is_super_admin(), pero se evita la consulta por
+  // completo para un ADMIN normal.
+  const solicitudesRecuperacion = esSuperAdmin
+    ? (await listarSolicitudesRecuperacionPendientes()).solicitudes
+    : []
 
   return (
     <div className="min-h-screen bg-neutral-50 flex font-sans">
@@ -73,6 +83,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       {/* Contenido Principal */}
       <main className="flex-1 ml-64 flex flex-col min-h-screen">
         <header className="h-16 bg-white border-b border-neutral-200 flex items-center justify-end px-8 gap-3">
+          {esSuperAdmin && <RecuperacionNotificacion solicitudesIniciales={solicitudesRecuperacion as any} />}
           <div className="text-right">
             <p className="text-sm font-semibold text-humania-blue leading-tight">{caller?.nombre || session.user.email}</p>
             <p className="text-xs text-humania-gray leading-tight">{session.user.email}</p>

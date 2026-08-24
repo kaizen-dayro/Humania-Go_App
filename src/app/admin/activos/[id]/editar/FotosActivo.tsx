@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { createClient } from '@/utils/supabase/client'
 import { registrarActivoFoto, getActivoFotos, eliminarActivoFoto } from '../../../actions'
+import { capitalizarPalabras } from '@/lib/validation'
 
 const CATEGORIAS_EVIDENCIA: { value: string, label: string }[] = [
   { value: 'FRONTAL', label: 'Frontal' },
@@ -400,11 +401,21 @@ export const FotosActivo = forwardRef<FotosActivoHandle, { activoId: string | nu
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-humania-gray">Descripción (opcional)</label>
+                <label className="text-xs font-medium text-humania-gray">Descripción (opcional, mínimo 10 caracteres si se completa)</label>
                 <Textarea
                   value={descripcionEvidencia}
-                  onChange={(e) => setDescripcionEvidencia(e.target.value)}
+                  onChange={(e) => {
+                    // Fase 13 (Documento 17/18): solo letras y espacios,
+                    // capitalizado palabra por palabra -- vacío sigue
+                    // siendo válido (campo opcional).
+                    const input = e.target
+                    const cursorPos = input.selectionStart
+                    const stripped = input.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
+                    setDescripcionEvidencia(capitalizarPalabras(stripped))
+                    requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
+                  }}
                   placeholder="Ej. Rayón lateral derecho"
+                  maxLength={111}
                   rows={1}
                   className="min-h-10 h-10 resize-none"
                 />
@@ -420,6 +431,11 @@ export const FotosActivo = forwardRef<FotosActivoHandle, { activoId: string | nu
                 onChange={(e) => {
                   const file = e.target.files?.[0]
                   if (file) {
+                    if (descripcionEvidencia.trim() && descripcionEvidencia.trim().length < 10) {
+                      setError('La descripción, si se completa, debe tener al menos 10 caracteres.')
+                      e.target.value = ''
+                      return
+                    }
                     if (diferir) seleccionarEvidencia(file)
                     else subirInmediata(file, 'activo-fotos-evidencia', categoriaEvidencia, descripcionEvidencia, setSubiendoEvidencia)
                   }

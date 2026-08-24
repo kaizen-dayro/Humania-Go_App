@@ -8,6 +8,24 @@ import { Label } from '@/components/ui/label'
 import { createAsset } from '../../actions'
 import { AlertCircle } from 'lucide-react'
 import { capitalizarPalabras } from '@/lib/validation'
+
+/**
+ * Filtro en vivo para campos "tipo oracion" en formularios no controlados
+ * (uncontrolled -- action={FormData}, sin useState por campo): a
+ * diferencia de un input controlado, aqui el DOM ya tiene el caracter
+ * invalido escrito cuando onChange se dispara, asi que hay que eliminarlo
+ * explicitamente (no basta con "no hacer nada"). Mismo patron que ya usa
+ * el campo "placa" de este mismo archivo. Fase 13 (Documento 17/18):
+ * estado_fisico -- solo letras y espacios, capitalizado palabra por
+ * palabra, mismo mecanismo que el trigger de Postgres (supabase/00030).
+ */
+function handleTextoLetrasChange(e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) {
+  const input = e.target
+  const cursorPos = input.selectionStart
+  const stripped = input.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
+  input.value = capitalizarPalabras(stripped)
+  requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
+}
 import { FotosActivo, type FotosActivoHandle } from '../[id]/editar/FotosActivo'
 
 export default function FormNuevoActivo({ modelos }: { modelos: any[] }) {
@@ -20,6 +38,12 @@ export default function FormNuevoActivo({ modelos }: { modelos: any[] }) {
     const placa = (formData.get('placa') as string) || ''
     if (placa && placa.length !== 6) {
       setError('La placa debe tener exactamente 6 caracteres. En Colombia no existen placas con menos ni más caracteres.')
+      return
+    }
+
+    const estadoFisico = ((formData.get('estado_fisico') as string) || '').trim()
+    if (estadoFisico.length < 10) {
+      setError('El Estado Físico debe tener al menos 10 caracteres.')
       return
     }
 
@@ -120,7 +144,9 @@ export default function FormNuevoActivo({ modelos }: { modelos: any[] }) {
           name="estado_fisico"
           required
           rows={3}
-          placeholder="Ej. Rayón leve en el guardabarros derecho, llantas en buen estado"
+          maxLength={111}
+          onChange={handleTextoLetrasChange}
+          placeholder="Ej. Rayón leve en el guardabarros, llantas en buen estado (mínimo 10 caracteres)"
           className="flex w-full rounded-none border border-neutral-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand"
         />
         <p className="text-xs text-humania-gray/70">Información interna de condición del vehículo antes de ser entregado. No es visible para candidatos.</p>

@@ -26,6 +26,17 @@ export const PHONE_CO = /^3\d{9}$/
 export const DESCRIPTIVE_TEXT = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s.,;:¿?¡!'"-]*$/
 
 /**
+ * Texto narrativo sin números (Fase 13, Documento 17/18): letras, espacios
+ * y puntuación básica de una oración en español, SIN dígitos. Usado en
+ * campos donde el motivo/observación debe leerse como texto humano, nunca
+ * mezclado con cifras (motivo de cambio de estado, estado físico de un
+ * activo, descripciones de evidencia/historial, respuestas abiertas de
+ * referencia laboral). Debe coincidir exactamente con el CHECK equivalente
+ * en PostgreSQL (ver supabase/00028-00032).
+ */
+export const LETTERS_WITH_PUNCTUATION = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s.,;:¿?¡!'"-]*$/
+
+/**
  * Normaliza texto humano en vivo, mientras la persona escribe: primera
  * letra de cada palabra en mayúscula, resto en minúscula. Debe
  * coincidir exactamente con la función normalizar_texto_humano() en

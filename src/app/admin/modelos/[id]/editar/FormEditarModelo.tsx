@@ -5,18 +5,27 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
 import { updateModelo } from '../../../actions'
 import { AlertCircle } from 'lucide-react'
+import { ModeloActivoToggle } from './ModeloActivoToggle'
+
+/**
+ * Fase 13 (Documento 17/18, migración 00031): nombre de modelo alfanumérico,
+ * SIN capitalización forzada a propósito (ver FormNuevoModelo.tsx).
+ */
+function handleNombreModeloChange(e: React.ChangeEvent<HTMLInputElement>) {
+  const input = e.target
+  const cursorPos = input.selectionStart
+  input.value = input.value.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, '')
+  requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
+}
 
 export default function FormEditarModelo({ modelo, marcas, tipos }: { modelo: any, marcas: any[], tipos: any[] }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [activo, setActivo] = useState<boolean>(modelo.activo)
 
   async function handleSubmit(formData: FormData) {
-    formData.set('activo', activo ? 'true' : 'false')
     setLoading(true)
     setError(null)
 
@@ -31,6 +40,7 @@ export default function FormEditarModelo({ modelo, marcas, tipos }: { modelo: an
   }
 
   return (
+    <div className="space-y-6">
     <form action={handleSubmit} className="space-y-6">
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-800 text-sm font-medium flex items-center gap-3 rounded-md">
@@ -65,28 +75,13 @@ export default function FormEditarModelo({ modelo, marcas, tipos }: { modelo: an
 
       <div className="space-y-2">
         <Label className="text-humania-gray font-medium">Nombre del Modelo</Label>
-        <Input name="nombre" required defaultValue={modelo.nombre} className="rounded-none border-neutral-300 h-12" />
+        <Input name="nombre" required minLength={4} maxLength={21} defaultValue={modelo.nombre} onChange={handleNombreModeloChange} className="rounded-none border-neutral-300 h-12" />
+        <p className="text-xs text-humania-gray/70">Entre 4 y 21 caracteres (letras, números y espacios).</p>
       </div>
 
       <div className="space-y-2">
         <Label className="text-humania-gray font-medium">URL de Imagen Predeterminada (Opcional)</Label>
         <Input name="image_url" defaultValue={modelo.image_url || ''} placeholder="Ej. /assets/NuevoModelo.jpg" className="rounded-none border-neutral-300 h-12" />
-      </div>
-
-      <div className="flex items-start space-x-3 p-4 border border-neutral-200 bg-neutral-50 rounded-lg">
-        <Checkbox
-          checked={activo}
-          onCheckedChange={(c) => setActivo(!!c)}
-          className="mt-1 data-[state=checked]:bg-humania-blue data-[state=checked]:border-humania-blue"
-        />
-        <div>
-          <Label className="font-medium text-humania-blue cursor-pointer" onClick={() => setActivo(!activo)}>
-            Modelo activo
-          </Label>
-          <p className="text-xs text-humania-gray/70 mt-1">
-            Desactivar este modelo no afecta los activos históricos ya relacionados con él. Además, la marca también debe estar activa para que este modelo pueda usarse en un activo nuevo.
-          </p>
-        </div>
       </div>
 
       <div className="pt-4 flex gap-4">
@@ -107,5 +102,8 @@ export default function FormEditarModelo({ modelo, marcas, tipos }: { modelo: an
         </Button>
       </div>
     </form>
+
+      <ModeloActivoToggle modeloId={modelo.id} modeloNombre={modelo.nombre} activo={modelo.activo} />
+    </div>
   )
 }

@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import FormEditarModelo from './FormEditarModelo'
+import { HistorialModelo } from './HistorialModelo'
+import { getModeloActivacionHistory } from '../../../actions'
 
 export default async function EditarModeloPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params
@@ -26,8 +28,10 @@ export default async function EditarModeloPage({ params }: { params: Promise<{ i
     )
   }
 
+  const { historial } = await getModeloActivacionHistory(resolvedParams.id)
+
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto space-y-6">
       <div className="mb-8">
         <Link href="/admin/modelos">
           <Button variant="ghost" className="text-humania-gray hover:text-humania-blue px-0 mb-2">
@@ -40,6 +44,8 @@ export default async function EditarModeloPage({ params }: { params: Promise<{ i
       <div className="bg-white p-8 rounded-lg shadow-sm border border-neutral-200">
         <FormEditarModelo modelo={modelo} marcas={marcas || []} tipos={tipos || []} />
       </div>
+
+      <HistorialModelo historial={historial || []} />
     </div>
   )
 }

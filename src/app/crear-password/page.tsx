@@ -16,6 +16,13 @@ export default function CrearPassword() {
   const [checking, setChecking] = useState(true)
   const [sessionValida, setSessionValida] = useState(false)
   const [correo, setCorreo] = useState('')
+  // Fase 13 (Documento 17 sección 9, Documento 18 sección 16.4): Supabase
+  // dispara el evento 'PASSWORD_RECOVERY' específicamente cuando la sesión
+  // vino de un enlace de recuperación (auth.resetPasswordForEmail), a
+  // diferencia de 'SIGNED_IN' para una invitación normal -- mismo mecanismo
+  // técnico de sesión en el fragmento de URL, pero el evento sí distingue
+  // el caso, sin necesidad de parsear la URL a mano.
+  const [esRecuperacion, setEsRecuperacion] = useState(false)
 
   const [password, setPassword] = useState('')
   const [confirmar, setConfirmar] = useState('')
@@ -33,16 +40,17 @@ export default function CrearPassword() {
     let mounted = true
     let resolved = false
 
-    const finish = (session: Session | null) => {
+    const finish = (session: Session | null, event?: string) => {
       if (!mounted || resolved) return
       resolved = true
       setSessionValida(!!session)
       setCorreo(session?.user?.email || '')
+      if (event === 'PASSWORD_RECOVERY') setEsRecuperacion(true)
       setChecking(false)
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) finish(session)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) finish(session, event)
     })
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -97,11 +105,13 @@ export default function CrearPassword() {
         <Card className="w-full max-w-sm">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold">Humania Go</CardTitle>
-            <CardDescription>Enlace de invitación inválido o expirado</CardDescription>
+            <CardDescription>{esRecuperacion ? 'Enlace de recuperación inválido o expirado' : 'Enlace de invitación inválido o expirado'}</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-humania-gray text-center mb-4">
-              Solicita a un SUPER_ADMIN que te envíe una nueva invitación.
+              {esRecuperacion
+                ? 'Solicita una nueva recuperación de contraseña desde la pantalla de inicio de sesión.'
+                : 'Solicita a un SUPER_ADMIN que te envíe una nueva invitación.'}
             </p>
             <Button className="w-full" onClick={() => router.push('/admin/login')}>
               Ir al inicio de sesión
@@ -118,7 +128,11 @@ export default function CrearPassword() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Humania Go</CardTitle>
           <CardDescription>
-            {listo ? 'Contraseña creada' : `Crea tu contraseña${correo ? ` — ${correo}` : ''}`}
+            {listo
+              ? 'Contraseña creada'
+              : esRecuperacion
+                ? `Restablece tu contraseña${correo ? ` — ${correo}` : ''}`
+                : `Crea tu contraseña${correo ? ` — ${correo}` : ''}`}
           </CardDescription>
         </CardHeader>
         <CardContent>

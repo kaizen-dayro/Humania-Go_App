@@ -8,6 +8,20 @@ import { Label } from '@/components/ui/label'
 import { createModelo } from '../../actions'
 import { AlertCircle } from 'lucide-react'
 
+/**
+ * Fase 13 (Documento 17/18, migración 00031): nombre de modelo alfanumérico
+ * (letras, números, espacios; sin caracteres especiales) -- SIN
+ * capitalización forzada a propósito: nombres reales como "SANDERO" o
+ * "YBR 125" no deben reescribirse (decisión explícita, ver Documento 18
+ * sección 15.1).
+ */
+function handleNombreModeloChange(e: React.ChangeEvent<HTMLInputElement>) {
+  const input = e.target
+  const cursorPos = input.selectionStart
+  input.value = input.value.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, '')
+  requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
+}
+
 export default function FormNuevoModelo({ marcas, tipos }: { marcas: any[], tipos: any[] }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -63,8 +77,8 @@ export default function FormNuevoModelo({ marcas, tipos }: { marcas: any[], tipo
 
       <div className="space-y-2">
         <Label className="text-humania-gray font-medium">Nombre del Modelo</Label>
-        <Input name="nombre" required placeholder="Ej. XTZ 125" className="rounded-none border-neutral-300 h-12" />
-        <p className="text-xs text-humania-gray/70">No pueden existir dos modelos con el mismo nombre para la misma marca, sin importar mayúsculas o minúsculas.</p>
+        <Input name="nombre" required minLength={4} maxLength={21} onChange={handleNombreModeloChange} placeholder="Ej. XTZ 125" className="rounded-none border-neutral-300 h-12" />
+        <p className="text-xs text-humania-gray/70">Entre 4 y 21 caracteres (letras, números y espacios). No pueden existir dos modelos con el mismo nombre para la misma marca, sin importar mayúsculas o minúsculas.</p>
       </div>
 
       <div className="space-y-2">

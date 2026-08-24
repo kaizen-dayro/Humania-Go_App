@@ -60,12 +60,27 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
       requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
       return
     }
+    if (name === 'estado_fisico') {
+      // Fase 13 (Documento 17/18): solo letras y espacios, capitalizado
+      // palabra por palabra, mismo mecanismo que el trigger de Postgres
+      // (supabase/00030).
+      const input = e.target as HTMLTextAreaElement
+      const cursorPos = input.selectionStart
+      const stripped = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
+      setFormValues(prev => ({ ...prev, estado_fisico: capitalizarPalabras(stripped) }))
+      requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
+      return
+    }
     setFormValues(prev => ({ ...prev, [name]: value }))
   }
 
   function handleInitialSubmit(formData: FormData) {
     if (formValues.placa && formValues.placa.length !== 6) {
       setError('La placa debe tener exactamente 6 caracteres. En Colombia no existen placas con menos ni más caracteres.')
+      return
+    }
+    if (formValues.estado_fisico.trim().length < 10) {
+      setError('El Estado Físico debe tener al menos 10 caracteres.')
       return
     }
 
@@ -251,9 +266,10 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
           name="estado_fisico"
           required
           rows={3}
+          maxLength={111}
           value={formValues.estado_fisico}
           onChange={handleChange}
-          placeholder="Ej. Rayón leve en el guardabarros derecho, llantas en buen estado"
+          placeholder="Ej. Rayón leve en el guardabarros, llantas en buen estado (mínimo 10 caracteres)"
           className="flex w-full rounded-none border border-neutral-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand"
         />
         <p className="text-xs text-humania-gray/70">Cada cambio queda registrado en el historial del activo (fecha, hora y usuario).</p>

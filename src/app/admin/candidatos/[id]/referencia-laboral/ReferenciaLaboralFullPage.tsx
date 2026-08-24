@@ -17,7 +17,7 @@ import {
   EVALUACION_FILAS, CONFIANZA_OPCIONES, RECONTRATACION_OPCIONES, RELACION_OPCIONES,
   type ReferenciaLaboralRow, type EvaluacionKey,
 } from '../ReferenciaLaboralSection'
-import { LETTERS_ONLY, NUMBERS_ONLY, DESCRIPTIVE_TEXT, capitalizarPalabras } from '@/lib/validation'
+import { LETTERS_ONLY, NUMBERS_ONLY, LETTERS_WITH_PUNCTUATION, capitalizarPalabras } from '@/lib/validation'
 
 const CAMPOS_SOLO_LETRAS: (keyof ReferenciaLaboralFormValues)[] = ['contacto_nombre', 'contacto_empresa', 'contacto_cargo']
 const CAMPOS_SOLO_NUMEROS: (keyof ReferenciaLaboralFormValues)[] = ['contacto_telefono']
@@ -89,7 +89,7 @@ export function ReferenciaLaboralFullPage({
   function handleFieldChange(key: keyof ReferenciaLaboralFormValues, value: string) {
     if (CAMPOS_SOLO_LETRAS.includes(key) && !LETTERS_ONLY.test(value)) return
     if (CAMPOS_SOLO_NUMEROS.includes(key) && !NUMBERS_ONLY.test(value)) return
-    if (CAMPOS_TEXTO_DESCRIPTIVO.includes(key) && !DESCRIPTIVE_TEXT.test(value)) return
+    if (CAMPOS_TEXTO_DESCRIPTIVO.includes(key) && !LETTERS_WITH_PUNCTUATION.test(value)) return
     setForm(prev => ({ ...prev, [key]: value }))
   }
 
@@ -98,6 +98,19 @@ export function ReferenciaLaboralFullPage({
   // conserva la posicion del cursor.
   function handleCampoNombreChange(key: keyof ReferenciaLaboralFormValues, e: React.ChangeEvent<HTMLInputElement>) {
     if (!LETTERS_ONLY.test(e.target.value)) return
+    const input = e.target
+    const cursorPos = input.selectionStart
+    handleFieldChange(key, capitalizarPalabras(input.value))
+    requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
+  }
+
+  // Version de handleFieldChange para el <Textarea> de "Queremos
+  // escucharte" (Fase 13): letras + puntuacion basica, sin numeros;
+  // capitaliza en vivo palabra por palabra (mismo mecanismo que el resto
+  // del sistema, incluida la extension del trigger de Postgres en 00028)
+  // y conserva la posicion del cursor.
+  function handleCampoNarrativoChange(key: keyof ReferenciaLaboralFormValues, e: React.ChangeEvent<HTMLTextAreaElement>) {
+    if (!LETTERS_WITH_PUNCTUATION.test(e.target.value)) return
     const input = e.target
     const cursorPos = input.selectionStart
     handleFieldChange(key, capitalizarPalabras(input.value))
@@ -188,11 +201,11 @@ export function ReferenciaLaboralFullPage({
           <div className="grid md:grid-cols-3 gap-5">
             <div className="space-y-2">
               <Label className="text-humania-gray font-medium">Nombre de la persona que dará la referencia</Label>
-              <Input value={form.contacto_nombre} onChange={e => handleCampoNombreChange('contacto_nombre', e)} placeholder="Escribe el nombre completo" maxLength={60} className="rounded-md border-neutral-300 h-11" />
+              <Input value={form.contacto_nombre} onChange={e => handleCampoNombreChange('contacto_nombre', e)} placeholder="Escribe el nombre completo" maxLength={33} className="rounded-md border-neutral-300 h-11" />
             </div>
             <div className="space-y-2">
               <Label className="text-humania-gray font-medium">Empresa donde trabajaron juntos</Label>
-              <Input value={form.contacto_empresa} onChange={e => handleCampoNombreChange('contacto_empresa', e)} placeholder="Nombre de la empresa" maxLength={111} className="rounded-md border-neutral-300 h-11" />
+              <Input value={form.contacto_empresa} onChange={e => handleCampoNombreChange('contacto_empresa', e)} placeholder="Nombre de la empresa" maxLength={33} className="rounded-md border-neutral-300 h-11" />
             </div>
             <div className="space-y-2">
               <Label className="text-humania-gray font-medium">Cargo de la persona que dará la referencia</Label>
@@ -284,12 +297,12 @@ export function ReferenciaLaboralFullPage({
               <Label className="text-humania-gray font-medium">¿Qué destacarías de esta persona como trabajador?</Label>
               <Textarea
                 value={form.destacaria_trabajador}
-                onChange={e => handleFieldChange('destacaria_trabajador', e.target.value)}
-                placeholder="Escribe tu respuesta..."
-                maxLength={500}
+                onChange={e => handleCampoNarrativoChange('destacaria_trabajador', e)}
+                placeholder="Escribe tu respuesta... (mínimo 10 caracteres)"
+                maxLength={111}
                 rows={4}
               />
-              <p className="text-xs text-humania-gray/50 text-right">{form.destacaria_trabajador.length}/500</p>
+              <p className="text-xs text-humania-gray/50 text-right">{form.destacaria_trabajador.length}/111</p>
             </div>
             <div className="space-y-2">
               <Label className="text-humania-gray font-medium">
@@ -297,12 +310,12 @@ export function ReferenciaLaboralFullPage({
               </Label>
               <Textarea
                 value={form.observaciones_previas}
-                onChange={e => handleFieldChange('observaciones_previas', e.target.value)}
-                placeholder="Escribe tu respuesta..."
-                maxLength={500}
+                onChange={e => handleCampoNarrativoChange('observaciones_previas', e)}
+                placeholder="Escribe tu respuesta... (mínimo 10 caracteres)"
+                maxLength={111}
                 rows={4}
               />
-              <p className="text-xs text-humania-gray/50 text-right">{form.observaciones_previas.length}/500</p>
+              <p className="text-xs text-humania-gray/50 text-right">{form.observaciones_previas.length}/111</p>
             </div>
           </div>
         </div>
