@@ -405,12 +405,13 @@ export const FotosActivo = forwardRef<FotosActivoHandle, { activoId: string | nu
                 <Textarea
                   value={descripcionEvidencia}
                   onChange={(e) => {
-                    // Fase 13 (Documento 17/18): solo letras y espacios,
-                    // capitalizado palabra por palabra -- vacío sigue
+                    // Fase 13 (Documento 17/18): letras, espacios y
+                    // puntuación básica (ampliado 2026-08-24 a pedido de
+                    // QA), capitalizado palabra por palabra -- vacío sigue
                     // siendo válido (campo opcional).
                     const input = e.target
                     const cursorPos = input.selectionStart
-                    const stripped = input.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
+                    const stripped = input.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s.,;:¿?¡!'"-]/g, '')
                     setDescripcionEvidencia(capitalizarPalabras(stripped))
                     requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
                   }}

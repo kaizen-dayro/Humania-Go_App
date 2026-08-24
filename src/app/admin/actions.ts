@@ -64,8 +64,8 @@ export async function registrarActivoFoto(
   if (!session) return { success: false, error: 'No autorizado' }
 
   const descripcionTrim = descripcion?.trim() || ''
-  if (descripcionTrim && !esTextoValido(descripcionTrim, LETTERS_ONLY, 10, 111)) {
-    return { success: false, error: 'La descripción, si se completa, debe tener entre 10 y 111 caracteres, solo letras y espacios.' }
+  if (descripcionTrim && !esTextoValido(descripcionTrim, LETTERS_WITH_PUNCTUATION, 10, 111)) {
+    return { success: false, error: 'La descripción, si se completa, debe tener entre 10 y 111 caracteres (letras, espacios y puntuación básica).' }
   }
 
   const { error } = await supabase.rpc('registrar_activo_foto', {
@@ -377,8 +377,8 @@ export async function updateAsset(activoId: string, formData: FormData) {
   if (!estado || !estado_fisico?.trim()) {
     return { success: false, error: 'Faltan campos obligatorios (Estado y Estado Físico son obligatorios)' }
   }
-  if (!esTextoValido(estado_fisico, LETTERS_ONLY, 10, 111)) {
-    return { success: false, error: 'El Estado Físico debe tener entre 10 y 111 caracteres, solo letras y espacios.' }
+  if (!esTextoValido(estado_fisico, LETTERS_WITH_PUNCTUATION, 10, 111)) {
+    return { success: false, error: 'El Estado Físico debe tener entre 10 y 111 caracteres (letras, espacios y puntuación básica).' }
   }
   if (estado === 'ASIGNADO' || estado === 'TRANSFERIDO') {
     return { success: false, error: 'ASIGNADO y TRANSFERIDO solo pueden establecerse desde el flujo contractual del candidato.' }
@@ -437,8 +437,8 @@ export async function createAsset(formData: FormData) {
   if (!modelo_id || !estado || !estado_fisico?.trim()) {
     return { success: false, error: 'Faltan campos obligatorios (Estado y Estado Físico son obligatorios)' }
   }
-  if (!esTextoValido(estado_fisico, LETTERS_ONLY, 10, 111)) {
-    return { success: false, error: 'El Estado Físico debe tener entre 10 y 111 caracteres, solo letras y espacios.' }
+  if (!esTextoValido(estado_fisico, LETTERS_WITH_PUNCTUATION, 10, 111)) {
+    return { success: false, error: 'El Estado Físico debe tener entre 10 y 111 caracteres (letras, espacios y puntuación básica).' }
   }
   if (estado === 'ASIGNADO' || estado === 'TRANSFERIDO') {
     return { success: false, error: 'ASIGNADO y TRANSFERIDO solo pueden establecerse desde el flujo contractual del candidato.' }
@@ -1167,9 +1167,16 @@ export async function listarSolicitudesRecuperacionPendientes() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return { success: false, solicitudes: [] }
 
+  // admin_password_recovery_requests tiene DOS llaves foraneas hacia
+  // admin_users (admin_id y aprobado_por) -- hay que decirle a PostgREST
+  // cual usar explicitamente (admin_users!<nombre_constraint>), o falla
+  // con PGRST201 "more than one relationship was found". Bug real
+  // encontrado en QA (Dayro, 2026-08-24): la solicitud se creaba
+  // correctamente, pero esta consulta fallaba en silencio y la
+  // notificacion nunca aparecia para el SUPER_ADMIN.
   const { data, error } = await supabase
     .from('admin_password_recovery_requests')
-    .select('id, correo, solicitado_en, admin_users(nombre)')
+    .select('id, correo, solicitado_en, admin_users!admin_password_recovery_requests_admin_id_fkey(nombre)')
     .eq('estado', 'PENDIENTE')
     .order('solicitado_en', { ascending: true })
 

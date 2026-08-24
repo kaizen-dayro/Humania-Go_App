@@ -22,7 +22,9 @@ import { capitalizarPalabras } from '@/lib/validation'
 function handleTextoLetrasChange(e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) {
   const input = e.target
   const cursorPos = input.selectionStart
-  const stripped = input.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
+  // Letras, espacios y puntuacion basica (sin numeros) -- ampliado el
+  // 2026-08-24 a pedido de QA, mismo patron que LETTERS_WITH_PUNCTUATION.
+  const stripped = input.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s.,;:¿?¡!'"-]/g, '')
   input.value = capitalizarPalabras(stripped)
   requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
 }

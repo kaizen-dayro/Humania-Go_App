@@ -61,12 +61,12 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
       return
     }
     if (name === 'estado_fisico') {
-      // Fase 13 (Documento 17/18): solo letras y espacios, capitalizado
-      // palabra por palabra, mismo mecanismo que el trigger de Postgres
-      // (supabase/00030).
+      // Fase 13 (Documento 17/18): letras, espacios y puntuacion basica
+      // (ampliado 2026-08-24 a pedido de QA), capitalizado palabra por
+      // palabra, mismo mecanismo que el trigger de Postgres (supabase/00030,00035).
       const input = e.target as HTMLTextAreaElement
       const cursorPos = input.selectionStart
-      const stripped = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
+      const stripped = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s.,;:¿?¡!'"-]/g, '')
       setFormValues(prev => ({ ...prev, estado_fisico: capitalizarPalabras(stripped) }))
       requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
       return

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { LETTERS_ONLY, capitalizarPalabras } from '@/lib/validation'
+import { LETTERS_WITH_PUNCTUATION, capitalizarPalabras } from '@/lib/validation'
 
 /**
  * Modal de motivo (Fase 13, Documento 17/18): reemplaza el window.prompt()
@@ -36,7 +36,7 @@ export function MotivoModal({
   const [error, setError] = useState('')
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    if (!LETTERS_ONLY.test(e.target.value)) return
+    if (!LETTERS_WITH_PUNCTUATION.test(e.target.value)) return
     const input = e.target
     const cursorPos = input.selectionStart
     setMotivo(capitalizarPalabras(input.value))

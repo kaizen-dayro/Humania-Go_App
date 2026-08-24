@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { LETTERS_ONLY, capitalizarPalabras } from '@/lib/validation'
+import { LETTERS_WITH_PUNCTUATION, capitalizarPalabras } from '@/lib/validation'
 import { setModeloActivo } from '../../../actions'
 
 /**
@@ -36,7 +36,7 @@ export function ModeloActivoToggle({
   const nuevaAccion = activo ? 'DESACTIVAR' : 'ACTIVAR'
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    if (!LETTERS_ONLY.test(e.target.value)) return
+    if (!LETTERS_WITH_PUNCTUATION.test(e.target.value)) return
     const input = e.target
     const cursorPos = input.selectionStart
     setDescripcion(capitalizarPalabras(input.value))

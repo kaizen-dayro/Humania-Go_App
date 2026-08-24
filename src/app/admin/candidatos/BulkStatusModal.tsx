@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { bulkChangeCandidateState } from '../actions'
-import { LETTERS_ONLY, capitalizarPalabras } from '@/lib/validation'
+import { LETTERS_WITH_PUNCTUATION, capitalizarPalabras } from '@/lib/validation'
 
 // Misma matriz de transiciones que protege bulk_change_candidate_status en PostgreSQL
 // (la base de datos es la autoridad final; esto solo evita mostrar opciones invalidas).
@@ -59,7 +59,7 @@ export function BulkStatusModal({
   const opcionesDisponibles = estadoComun ? (TRANSICIONES_VALIDAS[estadoComun] || []) : []
 
   function handleMotivoChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    if (!LETTERS_ONLY.test(e.target.value)) return
+    if (!LETTERS_WITH_PUNCTUATION.test(e.target.value)) return
     const input = e.target
     const cursorPos = input.selectionStart
     setMotivo(capitalizarPalabras(input.value))
