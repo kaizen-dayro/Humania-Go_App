@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Session } from '@supabase/supabase-js'
 import { createClient } from '@/utils/supabase/client'
+import { registrarLoginExitosoTrasReset } from './actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -87,6 +88,9 @@ export default function CrearPassword() {
       setError(error.message)
       return
     }
+
+    // No bloquea la redirección si falla (no crítico) -- ver actions.ts.
+    registrarLoginExitosoTrasReset().catch(() => {})
 
     setListo(true)
     setTimeout(() => {
