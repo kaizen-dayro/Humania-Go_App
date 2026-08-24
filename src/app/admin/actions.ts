@@ -6,6 +6,26 @@ import { revalidatePath } from 'next/cache'
 import { sendCandidateEmail } from '@/lib/services/email'
 import { PHONE_CO, LETTERS_ONLY, LETTERS_WITH_PUNCTUATION } from '@/lib/validation'
 
+/**
+ * URL real del sitio para construir redirectTo en correos de Supabase Auth
+ * (invitacion, recuperacion de contraseña). Antes, tanto inviteAdminUser
+ * como aprobarRecuperacionAction caian en silencio a
+ * 'http://localhost:3000' si la variable no estaba definida -- eso envio
+ * un enlace de recuperacion real a localhost en produccion (bug real
+ * encontrado por Dayro, 2026-08-24). Ahora falla con un error explicito
+ * en vez de enviar un enlace roto sin que nadie se entere.
+ */
+function getSiteUrlOrThrow(): string {
+  const url = process.env.NEXT_PUBLIC_SITE_URL
+  if (!url) {
+    throw new Error('Falta la variable de entorno NEXT_PUBLIC_SITE_URL en este despliegue. Configúrala en Vercel (Project Settings → Environment Variables) con la URL real del sitio antes de continuar.')
+  }
+  if (process.env.VERCEL_ENV === 'production' && url.includes('localhost')) {
+    throw new Error('NEXT_PUBLIC_SITE_URL está configurada como localhost en un despliegue de producción. Corrígela en Vercel (Project Settings → Environment Variables) antes de continuar.')
+  }
+  return url
+}
+
 /** Fase 13 (Documento 17/18): segunda validacion server-side, min/max/charset. */
 function esTextoValido(v: string | null | undefined, regex: RegExp, min: number, max: number): boolean {
   const t = v?.trim() || ''
@@ -1004,8 +1024,14 @@ export async function inviteAdminUser(correo: string, nombre: string, role: stri
     return { success: false, error: 'Rol inválido.' }
   }
 
+  let siteUrl: string
+  try {
+    siteUrl = getSiteUrlOrThrow()
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+
   const serviceClient = getServiceClient()
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
   const { data: invited, error: inviteErr } = await serviceClient.auth.admin.inviteUserByEmail(correo.trim(), {
     redirectTo: `${siteUrl}/crear-password`
   })
@@ -1209,8 +1235,17 @@ export async function aprobarRecuperacionAction(solicitudId: string) {
   // Mecanismo nativo de Supabase Auth (regla no negociable #9: nunca un
   // token propio). Se usa el cliente de Secret Key porque resetPasswordForEmail
   // no depende de RLS ni de sesión -- es el mismo patrón que inviteUserByEmail.
+  let siteUrl: string
+  try {
+    siteUrl = getSiteUrlOrThrow()
+  } catch (e: any) {
+    // La solicitud ya quedó APROBADA en base de datos (paso anterior) --
+    // se puede reintentar el envío una vez se corrija la configuración,
+    // sin perder el estado de aprobación.
+    return { success: false, error: e.message }
+  }
+
   const serviceClient = getServiceClient()
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
   const { error: sendErr } = await serviceClient.auth.resetPasswordForEmail(solicitud.correo, {
     redirectTo: `${siteUrl}/crear-password`
   })
