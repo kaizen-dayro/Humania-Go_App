@@ -136,7 +136,7 @@ export default async function Home() {
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-humania-gray to-humania-blue/80">nuevas oportunidades.</span>
             </h1>
             <p className="text-base sm:text-lg md:text-2xl text-humania-gray max-w-3xl font-medium leading-relaxed">
-              Conectamos personas con oportunidades de movilidad para trabajar, generar ingresos y construir algo propio.
+              Accede al vehículo que necesitas para trabajar bajo la modalidad de alquiler y avanza hacia la oportunidad de que sea tuyo.
             </p>
           </div>
         </section>
