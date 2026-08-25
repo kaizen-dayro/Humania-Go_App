@@ -1405,3 +1405,57 @@ export async function setMiNombre(nombre: string) {
   revalidatePath('/admin', 'layout')
   return { success: true }
 }
+
+// ==========================================
+// Ciudades y municipios activables, exclusivo SUPER_ADMIN
+// ==========================================
+
+export async function getCiudadesConMunicipios() {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado', ciudades: [], municipios: [] }
+
+  const [{ data: ciudades, error: errCiudades }, { data: municipios, error: errMunicipios }] = await Promise.all([
+    supabase.from('ciudades_operacion').select('id, nombre_oficial, activo, orden').order('orden'),
+    supabase.from('municipios_operacion').select('id, ciudad_operacion_id, nombre_oficial, activo, orden').order('orden'),
+  ])
+
+  if (errCiudades || errMunicipios) {
+    console.error('Error obteniendo ciudades/municipios:', errCiudades || errMunicipios)
+    return { success: false, error: 'No se pudo cargar el catálogo', ciudades: [], municipios: [] }
+  }
+
+  return { success: true, ciudades: ciudades ?? [], municipios: municipios ?? [] }
+}
+
+export async function setCiudadActiva(ciudadId: string, activo: boolean, motivo: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('set_ciudad_activa', { p_ciudad_id: ciudadId, p_activo: activo, p_motivo: motivo })
+
+  if (error) {
+    console.error('Error actualizando ciudad:', error)
+    return { success: false, error: error.message || 'No se pudo actualizar la ciudad.' }
+  }
+
+  revalidatePath('/admin/ciudades')
+  return { success: true }
+}
+
+export async function setMunicipioActivo(municipioId: string, activo: boolean, motivo: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('set_municipio_activo', { p_municipio_id: municipioId, p_activo: activo, p_motivo: motivo })
+
+  if (error) {
+    console.error('Error actualizando municipio:', error)
+    return { success: false, error: error.message || 'No se pudo actualizar el municipio.' }
+  }
+
+  revalidatePath('/admin/ciudades')
+  return { success: true }
+}

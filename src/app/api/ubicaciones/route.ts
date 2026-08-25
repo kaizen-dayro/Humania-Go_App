@@ -12,7 +12,12 @@ export async function GET() {
 
     const [{ data: ciudades, error: errorCiudades }, { data: municipios, error: errorMunicipios }] = await Promise.all([
       supabase.from('ciudades_operacion').select('id, nombre_oficial, orden').eq('activo', true).order('orden'),
-      supabase.from('municipios_operacion').select('id, ciudad_operacion_id, nombre_oficial, orden').eq('activo', true).order('orden'),
+      // !inner + el segundo .eq() exige tambien que la ciudad padre este
+      // activa -- antes un municipio activo podia "quedar vivo" aunque su
+      // ciudad ya estuviera apagada, simplemente porque nunca aparecia su
+      // ciudad en el otro select (inofensivo en la practica, pero no
+      // deberia depender de esa casualidad).
+      supabase.from('municipios_operacion').select('id, ciudad_operacion_id, nombre_oficial, orden, ciudades_operacion!inner(activo)').eq('activo', true).eq('ciudades_operacion.activo', true).order('orden'),
     ])
 
     if (errorCiudades || errorMunicipios) {
@@ -20,7 +25,9 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'DB_ERROR' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, data: { ciudades: ciudades || [], municipios: municipios || [] } })
+    const municipiosLimpios = (municipios || []).map(({ id, ciudad_operacion_id, nombre_oficial, orden }) => ({ id, ciudad_operacion_id, nombre_oficial, orden }))
+
+    return NextResponse.json({ success: true, data: { ciudades: ciudades || [], municipios: municipiosLimpios } })
   } catch (err) {
     console.error('API ubicaciones Error:', err)
     return NextResponse.json({ success: false, error: 'SERVER_ERROR' }, { status: 500 })
