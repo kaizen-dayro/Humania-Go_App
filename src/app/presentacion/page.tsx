@@ -37,6 +37,21 @@ declare global {
 
 const PLAYER_ELEMENT_ID = 'humania-presentacion-player'
 
+// ==========================================
+// MODO DEMO TEMPORAL — mientras no está el video real (Documento 21,
+// pendiente del equipo Humania Go). Marca la presentación como vista tras
+// N segundos reales en vez de esperar a que el video real termine, para
+// poder mostrar el flujo completo (video → botón habilitado → /apply) sin
+// esperar los ~6 minutos. El video real de YouTube sigue reproduciéndose
+// de fondo con TODAS sus restricciones normales (sin adelantar, sin
+// cerrar) -- únicamente cambia cuándo se cuenta como "terminado".
+//
+// Para quitar este modo cuando ya esté el video real: borrar (o poner en
+// blanco) NEXT_PUBLIC_PRESENTACION_DEMO_SEGUNDOS en las variables de
+// entorno de Vercel. No hace falta tocar código ni volver a desplegar.
+// ==========================================
+const DEMO_SEGUNDOS = Number(process.env.NEXT_PUBLIC_PRESENTACION_DEMO_SEGUNDOS) || null
+
 function fmt(totalSeconds: number) {
   const s = Math.max(0, Math.floor(totalSeconds))
   const m = Math.floor(s / 60)
@@ -138,8 +153,27 @@ function PresentacionView() {
   }, [apiReady, youtubeVideoId])
 
   // 4. Sondea el progreso mientras reproduce (no hay barra nativa que leer).
+  // En modo demo (ver DEMO_SEGUNDOS arriba), ignora el tiempo real del
+  // video y cuenta hasta DEMO_SEGUNDOS -- el video real sigue de fondo,
+  // con todas sus restricciones, solo cambia cuándo se marca "terminado".
   useEffect(() => {
-    if (playing) {
+    if (!playing) return
+
+    if (DEMO_SEGUNDOS) {
+      pollRef.current = setInterval(() => {
+        setDuration(DEMO_SEGUNDOS)
+        setElapsed(prev => {
+          const next = prev + 0.4
+          if (next >= DEMO_SEGUNDOS) {
+            if (pollRef.current) clearInterval(pollRef.current)
+            setPlaying(false)
+            setEnded(true)
+            return DEMO_SEGUNDOS
+          }
+          return next
+        })
+      }, 400)
+    } else {
       pollRef.current = setInterval(() => {
         const p = playerRef.current
         if (!p) return
@@ -147,6 +181,7 @@ function PresentacionView() {
         setDuration(p.getDuration())
       }, 400)
     }
+
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [playing])
 
@@ -219,6 +254,12 @@ function PresentacionView() {
         </span>
         {oportunidad && <span>{oportunidad.marca} {oportunidad.modelo}</span>}
       </div>
+
+      {DEMO_SEGUNDOS && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 text-[10.5px] font-bold uppercase tracking-widest text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-full px-3 py-1">
+          Modo demo temporal — se habilita a los {DEMO_SEGUNDOS}s
+        </div>
+      )}
 
       <div className="w-full max-w-2xl aspect-video rounded-lg overflow-hidden relative shadow-[0_30px_80px_rgba(0,0,0,0.5)] bg-black">
         <div id={PLAYER_ELEMENT_ID} className="absolute inset-0 w-full h-full pointer-events-none" />
