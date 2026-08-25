@@ -9,10 +9,14 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false }
 });
 
-export type EmailEventType = 'APPLICATION_RECEIVED' | 'INTERVIEW_INVITATION' | 'APPLICATION_REJECTED' | 'FINAL_SELECTION' | 'BACKUP_WAITLIST';
+export type EmailEventType = 'APPLICATION_RECEIVED' | 'INTERVIEW_INVITATION' | 'APPLICATION_REJECTED' | 'FINAL_SELECTION' | 'BACKUP_WAITLIST' | 'DESCARTE_EDAD_AGRADECIMIENTO';
 
 interface SendEmailOptions {
-  candidateId: string;
+  // Opcional (Fase 17): un descarte por edad nunca llega a crear un
+  // candidato real -- candidate_email_events.candidate_id tiene FK NOT
+  // NULL a candidatos, así que ese caso omite por completo el registro de
+  // idempotencia/auditoría de esta tabla y envía el correo directo.
+  candidateId?: string | null;
   to: string;
   subject: string;
   html: string;
@@ -20,23 +24,28 @@ interface SendEmailOptions {
 }
 
 export async function sendCandidateEmail({ candidateId, to, subject, html, eventType }: SendEmailOptions) {
-  // 1. Intentar registrar el evento como PENDING para bloquear ejecuciones concurrentes
-  const { data: intentData, error: intentError } = await supabaseAdmin
-    .from('candidate_email_events')
-    .insert({
-      candidate_id: candidateId,
-      event_type: eventType,
-      recipient_email: to,
-      subject,
-      status: 'PENDING'
-    })
-    .select('id')
-    .single();
+  let intentId: string | null = null;
 
-  // Si viola la restricción UNIQUE, el correo ya fue enviado o está en proceso
-  if (intentError && intentError.code === '23505') {
-    console.log(`[EMAIL IDEMPOTENCY] Evento ${eventType} para ${candidateId} ya existe. Ignorando.`);
-    return true;
+  if (candidateId) {
+    // 1. Intentar registrar el evento como PENDING para bloquear ejecuciones concurrentes
+    const { data: intentData, error: intentError } = await supabaseAdmin
+      .from('candidate_email_events')
+      .insert({
+        candidate_id: candidateId,
+        event_type: eventType,
+        recipient_email: to,
+        subject,
+        status: 'PENDING'
+      })
+      .select('id')
+      .single();
+
+    // Si viola la restricción UNIQUE, el correo ya fue enviado o está en proceso
+    if (intentError && intentError.code === '23505') {
+      console.log(`[EMAIL IDEMPOTENCY] Evento ${eventType} para ${candidateId} ya existe. Ignorando.`);
+      return true;
+    }
+    intentId = intentData?.id ?? null;
   }
 
   let status: 'SENT' | 'FAILED' = 'FAILED';
@@ -76,7 +85,7 @@ export async function sendCandidateEmail({ candidateId, to, subject, html, event
   }
 
   // 2. Actualizar el registro con el resultado real
-  if (intentData?.id) {
+  if (intentId) {
     try {
       await supabaseAdmin
         .from('candidate_email_events')
@@ -86,7 +95,7 @@ export async function sendCandidateEmail({ candidateId, to, subject, html, event
           error_message: errorMessage,
           sent_at: status === 'SENT' ? new Date().toISOString() : null
         })
-        .eq('id', intentData.id);
+        .eq('id', intentId);
     } catch (dbError: any) {
       console.error(`[EMAIL LOG ERROR] No se pudo actualizar el log de correo en DB:`, dbError.message);
     }

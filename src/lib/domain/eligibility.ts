@@ -117,6 +117,13 @@ export const ApplicationPayloadSchema = z.object({
     .min(2, "Obligatorio")
     .max(111, "Máximo 111 letras")
     .regex(LettersOnly, "Solo se permiten letras"),
+  // Control de calidad del dato (18-60): distinto del rango de
+  // elegibilidad interna (24-55), que se evalúa aparte -- ver
+  // EDAD_MINIMA_ELEGIBLE/EDAD_MAXIMA_ELEGIBLE más abajo.
+  edad: z.number({ message: "Ingresa tu edad" })
+    .int("Ingresa un número entero")
+    .min(18, "Mínimo 18 años")
+    .max(60, "Máximo 60 años"),
   tipo_documento: z.enum(['CC', 'CE', 'PEP']),
   numero_documento: z.string()
     .min(7, "Mínimo 7 números")
@@ -186,13 +193,26 @@ export type EligibilityResult = {
   razones: string[]
 }
 
+// Rango de edad interno elegible (Fase 17, 2026-08-25): mayor a 23 y
+// menor a 56, es decir 24-55 inclusive. Distinto del rango de calidad del
+// dato (18-60) que ya valida el propio campo del formulario -- ver
+// ApplicationPayloadSchema.edad más arriba.
+export const EDAD_MINIMA_ELEGIBLE = 24
+export const EDAD_MAXIMA_ELEGIBLE = 55
+
+export function edadFueraDeRangoElegible(edad: number): boolean {
+  return edad < EDAD_MINIMA_ELEGIBLE || edad > EDAD_MAXIMA_ELEGIBLE
+}
+
 export function evaluateInitialEligibility(data: ApplicationPayload): EligibilityResult {
   const razones: string[] = []
 
   if (!data.licencia_declarada_vigente) razones.push("LICENCIA_NO_VIGENTE_DECLARADA")
   if (data.cantidad_comparendos_declarados > 3) razones.push("EXCESO_COMPARENDOS_DECLARADOS")
   if (!data.fiador) razones.push("FIADOR_NO_PROPORCIONADO")
-  else if (!INGRESOS_PASS.has(data.fiador.ingresos_mensuales_aprox)) razones.push("FIADOR_INGRESOS_INSUFICIENTES")
+  // Fase 17: la finca raíz del fiador reemplaza el requisito de ingreso --
+  // cualquiera de las dos condiciones alcanza, ya no solo el ingreso.
+  else if (!data.fiador.tiene_finca_raiz && !INGRESOS_PASS.has(data.fiador.ingresos_mensuales_aprox)) razones.push("FIADOR_INGRESOS_INSUFICIENTES")
 
   if (razones.length > 0) {
     return { estado: 'DESCARTADO', razones }
@@ -260,15 +280,28 @@ export function evaluateCandidateRequirements(data: any): RequirementEvaluation[
   if (fiador) {
     evaluations.push({ requirement: 'FIADOR', status: 'PASS', label: 'Fiador registrado', reason: 'Datos de respaldo completos' });
     
-    // Filtro real (Documento 16): fiador solidario debe declarar ingresos
-    // desde $3.000.000 en adelante. Por debajo de eso, descarta al
-    // candidato desde el envio de /apply (evaluateInitialEligibility) --
-    // este FAIL es la explicacion visible para el equipo humano de por
-    // que quedo DESCARTADO.
-    if (INGRESOS_PASS.has(fiador.ingresos_mensuales_aprox)) {
-      evaluations.push({ requirement: 'FIADOR_INGRESOS', status: 'PASS', label: 'Ingresos fiador', reason: 'Cumplen el requisito (fiador solvente, desde $3.000.000)' });
+    // Filtro real (Documento 16, ajustado en Fase 17): el fiador solidario
+    // cumple si declara ingresos desde $3.000.000 en adelante, O si tiene
+    // finca raíz -- cualquiera de las dos alcanza. Si ninguna se cumple,
+    // descarta al candidato desde el envio de /apply
+    // (evaluateInitialEligibility) -- este FAIL es la explicacion visible
+    // para el equipo humano de por que quedo DESCARTADO.
+    const cumpleIngreso = INGRESOS_PASS.has(fiador.ingresos_mensuales_aprox);
+    const cumpleFincaRaiz = fiador.tiene_finca_raiz === true;
+    if (cumpleFincaRaiz || cumpleIngreso) {
+      evaluations.push({
+        requirement: 'FIADOR_INGRESOS',
+        status: 'PASS',
+        label: 'Ingresos o finca raíz del fiador',
+        reason: cumpleFincaRaiz ? 'Cumple por finca raíz declarada (reemplaza el requisito de ingreso)' : 'Cumple por ingresos (fiador solvente, desde $3.000.000)',
+      });
     } else {
-      evaluations.push({ requirement: 'FIADOR_INGRESOS', status: 'FAIL', label: 'Ingresos fiador insuficientes', reason: `Categoría declarada: "${fiador.ingresos_mensuales_aprox}" — inferior al mínimo requerido (desde $3.000.000)` });
+      evaluations.push({
+        requirement: 'FIADOR_INGRESOS',
+        status: 'FAIL',
+        label: 'Fiador no cumple ingreso ni finca raíz',
+        reason: `Categoría de ingresos declarada: "${fiador.ingresos_mensuales_aprox}" (inferior al mínimo) y no declaró finca raíz`,
+      });
     }
 
     if (fiador.tiene_finca_raiz) {

@@ -77,7 +77,7 @@ function ApplyForm() {
     activo_id: initialActivoId || '',
     video_token: initialVideoToken || '',
     perfil_publicitario: initialPerfil || 'GENERAL',
-    nombres: '', apellidos: '', tipo_documento: 'CC', numero_documento: '',
+    nombres: '', apellidos: '', edad: '', tipo_documento: 'CC', numero_documento: '',
     correo_electronico: '', confirmacion_correo: '', telefono: '',
     ciudad_operacion_id: '', municipio_operacion_id: '', genero: '', barrio: '',
     tipo_perfil: 'CONDUCTOR_PLATAFORMA',
@@ -162,7 +162,7 @@ function ApplyForm() {
       setFormData(prev => ({ ...prev, ciudad_operacion_id: value, municipio_operacion_id: '' }))
     } else {
       // Filtros estrictos de input
-      if (['numero_documento', 'telefono', 'fiador_documento', 'fiador_telefono', 'ref1_telefono', 'ref2_telefono', 'anos_experiencia_declarados', 'cantidad_comparendos_declarados'].includes(name)) {
+      if (['edad', 'numero_documento', 'telefono', 'fiador_documento', 'fiador_telefono', 'ref1_telefono', 'ref2_telefono', 'anos_experiencia_declarados', 'cantidad_comparendos_declarados'].includes(name)) {
         if (!NumbersOnly.test(value)) return;
       }
       let finalValue = value
@@ -196,6 +196,13 @@ function ApplyForm() {
     if (currentStep === 2) {
       if (formData.nombres.trim().length < 2) newErrors.nombres = "Obligatorio (mínimo 2 letras)."
       if (formData.apellidos.trim().length < 2) newErrors.apellidos = "Obligatorio (mínimo 2 letras)."
+
+      {
+        const edadNum = parseInt(formData.edad)
+        if (!formData.edad || isNaN(edadNum) || edadNum < 18 || edadNum > 60) {
+          newErrors.edad = "Ingresa una edad válida (entre 18 y 60 años)."
+        }
+      }
 
       if (formData.numero_documento.length < 7 || formData.numero_documento.length > 10) {
         newErrors.numero_documento = "Debe tener entre 7 y 10 números."
@@ -323,7 +330,7 @@ function ApplyForm() {
         activo_id: formData.activo_id,
         video_token: formData.video_token,
         perfil_publicitario: formData.perfil_publicitario as any,
-        nombres: formData.nombres, apellidos: formData.apellidos,
+        nombres: formData.nombres, apellidos: formData.apellidos, edad: parseInt(formData.edad),
         tipo_documento: formData.tipo_documento as any,
         numero_documento: formData.numero_documento,
         correo_electronico: formData.correo_electronico,
@@ -469,6 +476,12 @@ function ApplyForm() {
                     ))}
                   </div>
                   <ErrorMsg name="activo_id" errors={errors} />
+                  <p className="text-sm text-humania-gray/60 flex items-center gap-2">
+                    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                    </svg>
+                    Las imágenes de nuestros activos son referenciales y pueden no reflejar el estado físico actual del vehículo (rayones, desgaste u otros detalles menores). El estado real se confirma durante el proceso de evaluación.
+                  </p>
                 </div>
               )}
             </div>
@@ -497,6 +510,11 @@ function ApplyForm() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
+                    <Label className="text-humania-gray font-medium">Edad</Label>
+                    <Input name="edad" value={formData.edad} onChange={handleChange} maxLength={2} placeholder="Ej. 30" className={inputClass('edad')} />
+                    <ErrorMsg name="edad" errors={errors} />
+                  </div>
+                  <div className="space-y-2">
                     <Label className="text-humania-gray font-medium">Tipo Documento</Label>
                     <select name="tipo_documento" value={formData.tipo_documento} onChange={handleChange} className="flex h-12 w-full rounded-none border border-neutral-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand">
                       <option value="CC">CC - Cédula</option>
@@ -504,11 +522,12 @@ function ApplyForm() {
                       <option value="PEP">PEP / PPT</option>
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-humania-gray font-medium">Número (Solo dígitos)</Label>
-                    <Input name="numero_documento" value={formData.numero_documento} onChange={handleChange} maxLength={10} placeholder="Ej. 1020304050" className={inputClass('numero_documento')} />
-                    <ErrorMsg name="numero_documento" errors={errors} />
-                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-humania-gray font-medium">Número (Solo dígitos)</Label>
+                  <Input name="numero_documento" value={formData.numero_documento} onChange={handleChange} maxLength={10} placeholder="Ej. 1020304050" className={inputClass('numero_documento')} />
+                  <ErrorMsg name="numero_documento" errors={errors} />
                 </div>
 
                 <div className="space-y-2">

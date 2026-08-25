@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/mantenimiento-descartes-edad",
+      "schedule": "0 13 * * *"
+    }
+  ]
+}

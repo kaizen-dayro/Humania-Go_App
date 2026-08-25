@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
-import { Users, Car, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Users, Car, CheckCircle2, AlertTriangle, UserX } from 'lucide-react'
 import Link from 'next/link'
 
 export default async function AdminDashboard() {
@@ -19,13 +19,15 @@ export default async function AdminDashboard() {
     { count: activosDisponibles },
     { count: totalCandidatos },
     { count: candidatosRevision },
-    { count: candidatosFinalistas }
+    { count: candidatosFinalistas },
+    { count: descartadosPorEdad }
   ] = await Promise.all([
     supabase.from('activos').select('*', { count: 'exact', head: true }),
     supabase.from('activos').select('*', { count: 'exact', head: true }).eq('estado', 'DISPONIBLE'),
     supabase.from('candidatos').select('*', { count: 'exact', head: true }),
     supabase.from('candidatos').select('*', { count: 'exact', head: true }).eq('estado', 'REVISION_PRELIMINAR'),
-    supabase.from('candidatos').select('*', { count: 'exact', head: true }).in('estado', ['SELECCIONADO', 'EN_ESPERA'])
+    supabase.from('candidatos').select('*', { count: 'exact', head: true }).in('estado', ['SELECCIONADO', 'EN_ESPERA']),
+    supabase.from('candidatos_descartados_por_edad').select('*', { count: 'exact', head: true })
   ])
 
   return (
@@ -35,7 +37,7 @@ export default async function AdminDashboard() {
         <p className="text-humania-gray">Resumen de operación de Humania Go</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
         
         {/* KPI: Activos Totales */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-neutral-200 flex flex-col justify-between">
@@ -94,6 +96,18 @@ export default async function AdminDashboard() {
             <p className="text-xs text-humania-blue mt-2 font-medium">En espera o seleccionados</p>
           </div>
         </Link>
+
+        {/* KPI: Descartados por Edad */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-neutral-200 flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="text-sm font-bold text-humania-gray/50 uppercase tracking-widest">Descartados (Edad)</h3>
+            <UserX className="w-5 h-5 text-humania-blue/30" />
+          </div>
+          <div>
+            <p className="text-4xl font-bold text-humania-blue">{descartadosPorEdad || 0}</p>
+            <p className="text-xs text-humania-gray mt-2 font-medium">Fuera del rango de edad elegible</p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">

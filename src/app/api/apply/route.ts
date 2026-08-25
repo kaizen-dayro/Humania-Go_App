@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { ApplicationPayloadSchema, evaluateInitialEligibility } from '@/lib/domain/eligibility'
+import { ApplicationPayloadSchema, evaluateInitialEligibility, edadFueraDeRangoElegible } from '@/lib/domain/eligibility'
 import { sendCandidateEmail } from '@/lib/services/email'
 import { checkSimitFines } from '@/lib/services/simit'
 
@@ -36,6 +36,30 @@ export async function POST(req: NextRequest) {
     }
 
     const data = parsed.data
+
+    // 1b. Filtro de edad interna (Fase 17, 2026-08-25): fuera del rango
+    // elegible (24-55 años), el candidato NUNCA llega a crear una fila en
+    // `candidatos` -- solo un registro mínimo aparte (contador +
+    // agradecimiento a las 48h). La persona no se entera: la respuesta es
+    // exactamente igual a un envío exitoso, para que el formulario
+    // termine con normalidad en el frontend.
+    if (edadFueraDeRangoElegible(data.edad)) {
+      const { error: descarteError } = await supabaseAdmin.rpc('registrar_descarte_por_edad', {
+        p_activo_id: data.activo_id,
+        p_nombres: data.nombres,
+        p_correo_electronico: data.correo_electronico,
+        p_edad: data.edad
+      })
+
+      if (descarteError) {
+        console.error(`Error registrando descarte por edad [request_id=${requestId}]:`, descarteError)
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: { id: null, estado_preliminar: 'DESCARTADO', razones: [] }
+      }, { status: 201 })
+    }
 
     // 2. Reglas de Negocio / Eligibility
     const eligibilityResult = evaluateInitialEligibility(data)
