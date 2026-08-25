@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { ReferenciaLaboralScore } from './ReferenciaLaboralScore'
+import { CollapsibleCard } from './CollapsibleCard'
 
 export type ReferenciaLaboralRow = {
   id: string
@@ -90,11 +92,6 @@ const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
   COMPLETADA: { label: '✓ Completada', className: 'text-green-700' },
 }
 
-function textoOpcionEvaluacion(opciones: string[], valor: number | null) {
-  if (!valor) return 'Sin respuesta'
-  return `${valor} — ${opciones[valor - 1]}`
-}
-
 function Dato({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div>
@@ -119,9 +116,10 @@ export function ReferenciaLaboralSection({
   const href = `/admin/candidatos/${candidatoId}/referencia-laboral`
 
   return (
-    <div className="bg-white border border-neutral-200 p-8 mt-6 rounded-lg shadow-sm">
-      <h3 className="text-sm font-bold text-humania-gray/50 border-b border-neutral-100 pb-3 mb-6 tracking-widest">REFERENCIA LABORAL</h3>
-
+    <CollapsibleCard
+      title="REFERENCIA LABORAL"
+      headerExtra={initialData ? <span className={`text-xs font-semibold ${ESTADO_BADGE[initialData.estado].className}`}>{ESTADO_BADGE[initialData.estado].label}</span> : undefined}
+    >
       {!initialData && (
         <div>
           <p className="text-sm text-humania-gray mb-4">
@@ -165,19 +163,9 @@ export function ReferenciaLaboralSection({
             <Dato label="Completada" value={initialData.completado_at ? new Date(initialData.completado_at).toLocaleString() : null} />
           </div>
 
+          <ReferenciaLaboralScore data={initialData} />
+
           <div className="border-t border-neutral-100 pt-4 space-y-1.5">
-            <p className="text-[11px] font-bold text-humania-gray/50 uppercase tracking-widest mb-2">Evaluación interna</p>
-            {EVALUACION_FILAS.map(fila => (
-              <p key={fila.key} className="text-sm text-humania-blue">
-                <span className="font-semibold">{fila.titulo}:</span> {textoOpcionEvaluacion(fila.opciones, initialData[fila.key] as number | null)}
-              </p>
-            ))}
-            <p className="text-sm text-humania-blue">
-              <span className="font-semibold">Pregunta de confianza:</span> {textoOpcionEvaluacion(CONFIANZA_OPCIONES, initialData.pregunta_confianza)}
-            </p>
-            <p className="text-sm text-humania-blue">
-              <span className="font-semibold">Recontratación:</span> {textoOpcionEvaluacion(RECONTRATACION_OPCIONES, initialData.recontratacion)}
-            </p>
             {initialData.destacaria_trabajador && (
               <p className="text-sm text-humania-gray pt-1">
                 <span className="font-semibold text-humania-blue">Destacaría:</span> {initialData.destacaria_trabajador}
@@ -201,6 +189,6 @@ export function ReferenciaLaboralSection({
           )}
         </div>
       )}
-    </div>
+    </CollapsibleCard>
   )
 }

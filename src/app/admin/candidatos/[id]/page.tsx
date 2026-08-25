@@ -8,6 +8,7 @@ import { CandidateActions } from './CandidateActions'
 import { EvaluacionForm } from './EvaluacionForm'
 import { ContractStatusForm } from './ContractStatusForm'
 import { ReferenciaLaboralSection, type ReferenciaLaboralRow } from './ReferenciaLaboralSection'
+import { CollapsibleCard } from './CollapsibleCard'
 import { getCandidateStatusHistory } from '../../actions'
 
 export default async function CandidatoDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -370,14 +371,12 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
           />
 
           {(candidato.estado === 'ENTREVISTA' || candidato.estado === 'SELECCIONADO' || candidato.estado === 'EN_ESPERA') && (
-            <div className="bg-white border border-humania-blue p-8 mt-6 rounded-lg shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-humania-blue"></div>
-              <h3 className="text-sm font-bold text-humania-gray/50 border-b border-neutral-100 pb-3 mb-6 tracking-widest">INFORMACIÓN AVANZADA (ENTREVISTA)</h3>
+            <CollapsibleCard title="INFORMACIÓN AVANZADA (ENTREVISTA)" accent>
               <p className="text-sm text-humania-gray mb-6">
                 Esta información complementaria debe ser registrada por el equipo humano durante o después de la entrevista para apoyar la decisión final.
               </p>
               <EvaluacionForm candidatoId={candidato.id} existingData={candidato.candidatos_evaluacion} />
-            </div>
+            </CollapsibleCard>
           )}
 
           {candidato.estado === 'SELECCIONADO' && (
@@ -389,8 +388,7 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
             />
           )}
 
-          <div className="bg-white border border-neutral-200 p-8 mt-6 rounded-lg shadow-sm">
-            <h3 className="text-sm font-bold text-humania-gray/50 border-b border-neutral-100 pb-3 mb-6 tracking-widest">HISTORIAL DE CAMBIOS</h3>
+          <CollapsibleCard title="HISTORIAL DE CAMBIOS">
             {historialCambios.length === 0 ? (
               <p className="text-sm text-humania-gray/70">Sin eventos registrados todavía.</p>
             ) : (
@@ -423,7 +421,7 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
                 })}
               </div>
             )}
-          </div>
+          </CollapsibleCard>
         </div>
 
       </main>
