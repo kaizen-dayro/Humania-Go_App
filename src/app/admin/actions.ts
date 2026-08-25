@@ -1284,3 +1284,46 @@ export async function rechazarRecuperacionAction(solicitudId: string) {
   revalidatePath('/admin')
   return { success: true }
 }
+
+// ==========================================
+// Fase 15b — video de /presentacion, editable por el SUPER_ADMIN
+// ==========================================
+
+export async function setPresentacionVideo(youtubeVideoId: string, youtubeUrlOriginal: string, titulo: string, motivo: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('set_presentacion_video', {
+    p_youtube_video_id: youtubeVideoId,
+    p_youtube_url_original: youtubeUrlOriginal,
+    p_titulo: titulo || null,
+    p_motivo: motivo
+  })
+
+  if (error) {
+    console.error('Error actualizando el video de presentación:', error)
+    return { success: false, error: error.message || 'No se pudo actualizar el video.' }
+  }
+
+  revalidatePath('/admin/presentacion')
+  return { success: true }
+}
+
+export async function getPresentacionVideoHistorial() {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado', historial: [] }
+
+  const { data: historial, error } = await supabase
+    .from('presentacion_video_versions')
+    .select('id, youtube_video_id, youtube_url_original, titulo, motivo, is_current, creado_en, admin_users(nombre)')
+    .order('creado_en', { ascending: false })
+
+  if (error || !historial) {
+    console.error('Error obteniendo historial de videos de presentación:', error)
+    return { success: false, error: 'No se pudo cargar el historial', historial: [] }
+  }
+
+  return { success: true, historial }
+}

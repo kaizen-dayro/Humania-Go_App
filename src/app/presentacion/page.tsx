@@ -35,7 +35,6 @@ declare global {
   }
 }
 
-const YOUTUBE_VIDEO_ID = process.env.NEXT_PUBLIC_PRESENTACION_YOUTUBE_ID || ''
 const PLAYER_ELEMENT_ID = 'humania-presentacion-player'
 
 function fmt(totalSeconds: number) {
@@ -53,6 +52,9 @@ function PresentacionView() {
   const [oportunidad, setOportunidad] = useState<Oportunidad | null>(null)
   const [loadingOportunidad, setLoadingOportunidad] = useState(true)
   const [notFound, setNotFound] = useState(false)
+
+  const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null)
+  const [loadingVideo, setLoadingVideo] = useState(true)
 
   const [apiReady, setApiReady] = useState(false)
   const [playerReady, setPlayerReady] = useState(false)
@@ -80,6 +82,16 @@ function PresentacionView() {
       .finally(() => setLoadingOportunidad(false))
   }, [activoId])
 
+  // 1b. Video vigente -- lo decide el SUPER_ADMIN desde /admin/presentacion,
+  // nunca una variable de entorno (Fase 15b).
+  useEffect(() => {
+    fetch('/api/presentacion/video-actual')
+      .then(res => res.json())
+      .then(res => setYoutubeVideoId(res.success && res.data ? res.data.youtubeVideoId : null))
+      .catch(() => setYoutubeVideoId(null))
+      .finally(() => setLoadingVideo(false))
+  }, [])
+
   // 2. Carga el script de la API de YouTube una sola vez.
   useEffect(() => {
     const markReady = () => setApiReady(true)
@@ -97,9 +109,9 @@ function PresentacionView() {
 
   // 3. Crea el reproductor (controles nativos ocultos, sin teclado, sin pantalla completa propia).
   useEffect(() => {
-    if (!apiReady || !YOUTUBE_VIDEO_ID || playerRef.current || !window.YT) return
+    if (!apiReady || !youtubeVideoId || playerRef.current || !window.YT) return
     playerRef.current = new window.YT.Player(PLAYER_ELEMENT_ID, {
-      videoId: YOUTUBE_VIDEO_ID,
+      videoId: youtubeVideoId,
       playerVars: { controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1, autoplay: 0 },
       events: {
         onReady: () => setPlayerReady(true),
@@ -119,7 +131,7 @@ function PresentacionView() {
         },
       },
     })
-  }, [apiReady])
+  }, [apiReady, youtubeVideoId])
 
   // 4. Sondea el progreso mientras reproduce (no hay barra nativa que leer).
   useEffect(() => {
@@ -181,7 +193,7 @@ function PresentacionView() {
     router.push(`/apply?activo_id=${activoId}&video_token=${videoToken}`)
   }, [activoId, videoToken, router])
 
-  if (loadingOportunidad) {
+  if (loadingOportunidad || loadingVideo) {
     return <div className="min-h-screen bg-[#0B0E10] flex items-center justify-center text-white/60 text-sm">Cargando…</div>
   }
 
@@ -212,7 +224,7 @@ function PresentacionView() {
             que sí tiene controles completos. */}
         <div className="absolute inset-0" onContextMenu={(e) => e.preventDefault()} />
 
-        {!playing && !ended && (
+        {!playing && !ended && youtubeVideoId && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30">
             <button
               type="button"
@@ -226,7 +238,7 @@ function PresentacionView() {
           </div>
         )}
 
-        {!YOUTUBE_VIDEO_ID && (
+        {!youtubeVideoId && (
           <div className="absolute inset-0 flex items-center justify-center text-white/50 text-xs text-center px-8">
             Video pendiente de configuración por el equipo de Humania Go.
           </div>
