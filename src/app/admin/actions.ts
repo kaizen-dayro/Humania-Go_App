@@ -1332,20 +1332,25 @@ export async function getPresentacionVideoHistorial() {
 export async function getPresentacionConfiguracion() {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return { success: false, error: 'No autorizado', segmentacionActiva: false, demoSegundos: null }
+  if (!session) return { success: false, error: 'No autorizado', segmentacionActiva: false, demoSegundos: null, videoRequerido: true }
 
   const { data, error } = await supabase
     .from('presentacion_configuracion')
-    .select('segmentacion_activa, demo_segundos')
+    .select('segmentacion_activa, demo_segundos, video_requerido')
     .eq('id', true)
     .single()
 
   if (error || !data) {
     console.error('Error obteniendo configuración de presentación:', error)
-    return { success: false, error: 'No se pudo cargar la configuración', segmentacionActiva: false, demoSegundos: null }
+    return { success: false, error: 'No se pudo cargar la configuración', segmentacionActiva: false, demoSegundos: null, videoRequerido: true }
   }
 
-  return { success: true, segmentacionActiva: data.segmentacion_activa as boolean, demoSegundos: data.demo_segundos as number | null }
+  return {
+    success: true,
+    segmentacionActiva: data.segmentacion_activa as boolean,
+    demoSegundos: data.demo_segundos as number | null,
+    videoRequerido: data.video_requerido as boolean,
+  }
 }
 
 export async function setPresentacionSegmentacionActiva(activa: boolean, motivo: string) {
@@ -1457,5 +1462,24 @@ export async function setMunicipioActivo(municipioId: string, activo: boolean, m
   }
 
   revalidatePath('/admin/ciudades')
+  return { success: true }
+}
+
+export async function setPresentacionVideoRequerido(requerido: boolean, motivo: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('set_presentacion_video_requerido', {
+    p_requerido: requerido,
+    p_motivo: motivo
+  })
+
+  if (error) {
+    console.error('Error actualizando si el video es requerido:', error)
+    return { success: false, error: error.message || 'No se pudo actualizar la configuración.' }
+  }
+
+  revalidatePath('/admin/presentacion')
   return { success: true }
 }

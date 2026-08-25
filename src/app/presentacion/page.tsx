@@ -60,6 +60,14 @@ function PresentacionView() {
   // /admin/presentacion (nunca una variable de entorno -- el plan gratuito
   // de Vercel del usuario no permite agregar más). null = apagado.
   const [demoSegundos, setDemoSegundos] = useState<number | null>(null)
+  // Video desactivado por completo (nuevo): administrado por el
+  // SUPER_ADMIN para tráfico puntual ya filtrado personalmente que no
+  // necesita ver la presentación. true = comportamiento normal (por
+  // defecto). Cuando es false, esta vista nunca llega a mostrar el
+  // reproductor -- registra la visualización igual (misma función que si
+  // el video hubiera terminado de verdad) y pasa directo a /apply.
+  const [videoRequerido, setVideoRequerido] = useState(true)
+  const bypasseandoRef = useRef(false)
 
   const [apiReady, setApiReady] = useState(false)
   const [playerReady, setPlayerReady] = useState(false)
@@ -96,10 +104,31 @@ function PresentacionView() {
         setYoutubeVideoId(res.success && res.data ? res.data.youtubeVideoId : null)
         setPerfilResuelto(res.success && res.data ? res.data.perfil : 'GENERAL')
         setDemoSegundos(res.success ? res.demoSegundos ?? null : null)
+        setVideoRequerido(res.success ? res.videoRequerido !== false : true)
       })
       .catch(() => setYoutubeVideoId(null))
       .finally(() => setLoadingVideo(false))
   }, [])
+
+  // 1c. Video desactivado por completo -- registra la visualización sin
+  // mostrar nada y pasa directo a /apply, en vez de esperar a que la
+  // persona interactúe con un reproductor que nunca aparece.
+  useEffect(() => {
+    if (loadingVideo || videoRequerido || !activoId || bypasseandoRef.current) return
+    bypasseandoRef.current = true
+    fetch('/api/presentacion/completar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activo_id: activoId }),
+    })
+      .then(res => res.json())
+      .then(res => {
+        if (res.success) {
+          router.replace(`/apply?activo_id=${activoId}&video_token=${res.token}&perfil=${perfilResuelto}`)
+        }
+      })
+      .catch(() => {})
+  }, [loadingVideo, videoRequerido, activoId, perfilResuelto, router])
 
   // 2. Carga el script de la API de YouTube una sola vez.
   useEffect(() => {
@@ -234,6 +263,10 @@ function PresentacionView() {
         <Link href="/" className="text-humania-sand text-sm font-semibold underline underline-offset-4">Volver al inicio</Link>
       </div>
     )
+  }
+
+  if (!videoRequerido) {
+    return <div className="min-h-screen bg-[#0B0E10] flex items-center justify-center text-white/60 text-sm">Cargando…</div>
   }
 
   return (

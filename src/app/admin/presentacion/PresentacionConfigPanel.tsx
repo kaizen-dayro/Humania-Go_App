@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { LETTERS_WITH_PUNCTUATION, capitalizarPalabras } from '@/lib/validation'
-import { setPresentacionSegmentacionActiva } from '../actions'
+import { setPresentacionSegmentacionActiva, setPresentacionVideoRequerido } from '../actions'
 import { VideoPerfilCard } from './VideoPerfilCard'
 import { DemoModeCard } from './DemoModeCard'
 
@@ -107,9 +107,106 @@ function SegmentacionToggle({ segmentacionActiva }: { segmentacionActiva: boolea
   )
 }
 
-export function PresentacionConfigPanel({ segmentacionActiva, demoSegundos, historial }: { segmentacionActiva: boolean; demoSegundos: number | null; historial: VersionRow[] }) {
+/**
+ * Interruptor maestro de si la presentación se exige en absoluto. Pensado
+ * para tráfico puntual que el usuario ya filtró personalmente (contactos
+ * directos que ya conocen el negocio) -- apagado, /presentacion nunca
+ * llega a mostrar el reproductor: registra la visualización igual (queda
+ * auditado, ver Documento 21) y pasa directo a /apply. Encendido (por
+ * defecto) es el comportamiento normal de siempre.
+ */
+function VideoRequeridoToggle({ videoRequerido }: { videoRequerido: boolean }) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [motivo, setMotivo] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const nuevaAccion = videoRequerido ? 'DESACTIVAR' : 'ACTIVAR'
+
+  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    if (!LETTERS_WITH_PUNCTUATION.test(e.target.value)) return
+    const input = e.target
+    const cursorPos = input.selectionStart
+    setMotivo(capitalizarPalabras(input.value))
+    requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen)
+    if (!nextOpen) { setMotivo(''); setError('') }
+  }
+
+  async function handleConfirm() {
+    const trimmed = motivo.trim()
+    if (trimmed.length < 10) { setError('El motivo debe tener al menos 10 caracteres.'); return }
+
+    setLoading(true)
+    setError('')
+    const res = await setPresentacionVideoRequerido(!videoRequerido, trimmed)
+    setLoading(false)
+
+    if (!res.success) { setError(res.error || 'No se pudo actualizar la configuración.'); return }
+
+    setOpen(false)
+    setMotivo('')
+    router.refresh()
+  }
+
+  return (
+    <>
+      <div className={`flex items-start space-x-3 p-4 border rounded-lg ${videoRequerido ? 'border-neutral-200 bg-neutral-50' : 'border-amber-200 bg-amber-50'}`}>
+        <Checkbox
+          checked={videoRequerido}
+          onCheckedChange={() => setOpen(true)}
+          className="mt-1 data-[state=checked]:bg-humania-blue data-[state=checked]:border-humania-blue"
+        />
+        <div>
+          <Label className="font-medium text-humania-blue cursor-pointer" onClick={() => setOpen(true)}>
+            Exigir la presentación en video antes de /apply
+          </Label>
+          <p className="text-xs text-humania-gray/70 mt-1">
+            {videoRequerido
+              ? 'Encendido (normal): todo el mundo debe ver la presentación completa antes de poder postularse.'
+              : 'Apagado: nadie ve el reproductor -- se pasa directo a /apply. Úsalo solo para tráfico puntual ya filtrado personalmente (contactos que ya conocen el negocio); recuerda volver a encenderlo para el tráfico general.'}
+          </p>
+        </div>
+      </div>
+
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{nuevaAccion === 'ACTIVAR' ? 'Volver a exigir el video' : 'Desactivar el video para todos'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Motivo (obligatorio)</label>
+              <Textarea
+                value={motivo}
+                onChange={handleChange}
+                placeholder="Motivo del cambio... (mínimo 10 caracteres)"
+                maxLength={111}
+                rows={3}
+                autoFocus
+              />
+              <p className="text-xs text-neutral-400 text-right">{motivo.length}/111</p>
+            </div>
+            {error && <p className="text-red-600 text-sm">{error}</p>}
+            <Button onClick={handleConfirm} disabled={loading} className="w-full bg-humania-blue hover:bg-humania-blue/90">
+              {loading ? 'Guardando...' : `Confirmar ${nuevaAccion === 'ACTIVAR' ? 'activación' : 'desactivación'}`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+export function PresentacionConfigPanel({ segmentacionActiva, demoSegundos, videoRequerido, historial }: { segmentacionActiva: boolean; demoSegundos: number | null; videoRequerido: boolean; historial: VersionRow[] }) {
   return (
     <div className="space-y-8">
+      <VideoRequeridoToggle videoRequerido={videoRequerido} />
+
       <DemoModeCard demoSegundosActual={demoSegundos} />
 
       <SegmentacionToggle segmentacionActiva={segmentacionActiva} />
