@@ -87,7 +87,8 @@ export async function POST(req: NextRequest) {
         authorized: data.dataAuthorization,
         authorization_channel: 'WEB_APPLY',
         request_id: requestId
-      }
+      },
+      p_video_token: data.video_token
     })
 
     if (rpcError) {
@@ -98,6 +99,13 @@ export async function POST(req: NextRequest) {
           success: false,
           error: "AUTHORIZATION_REQUIRED",
           message: "Para enviar tu postulación debes leer la Política de Tratamiento de Datos Personales y autorizar expresamente el tratamiento de tus datos."
+        }, { status: 400 })
+      }
+      if (rpcError.message.includes('VIDEO_NO_VISTO')) {
+        return NextResponse.json({
+          success: false,
+          error: "VIDEO_NO_VISTO",
+          message: "Debes ver completa la presentación del modelo de negocio antes de postularte."
         }, { status: 400 })
       }
       if (rpcError.message.includes('unique constraint') || rpcError.code === '23505') {

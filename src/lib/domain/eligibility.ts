@@ -97,6 +97,7 @@ export const GuarantorSchema = z.object({
 
 export const ApplicationPayloadSchema = z.object({
   activo_id: z.string().uuid("Debes seleccionar una oportunidad"),
+  video_token: z.string().uuid("Debes ver la presentación completa antes de postularte."),
   nombres: z.string()
     .min(2, "Obligatorio")
     .max(111, "Máximo 111 letras")

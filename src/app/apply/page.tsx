@@ -49,6 +49,7 @@ function ApplyForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialActivoId = searchParams.get('activo_id')
+  const initialVideoToken = searchParams.get('video_token')
 
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -73,6 +74,7 @@ function ApplyForm() {
 
   const [formData, setFormData] = useState({
     activo_id: initialActivoId || '',
+    video_token: initialVideoToken || '',
     nombres: '', apellidos: '', tipo_documento: 'CC', numero_documento: '',
     correo_electronico: '', confirmacion_correo: '', telefono: '',
     ciudad_operacion_id: '', municipio_operacion_id: '', genero: '', barrio: '',
@@ -287,6 +289,16 @@ function ApplyForm() {
 
   const nextStep = () => {
     if (validateStep(step)) {
+      // Nadie avanza mas alla de la seleccion de oportunidad sin haber
+      // visto la presentacion de esa oportunidad primero -- si llego aqui
+      // sin el token (URL editada a mano, o eligio la oportunidad dentro
+      // de este mismo paso 1 en vez de venir del clic en la portada),
+      // se lo manda a verla. La garantia real no depende de esto: vive en
+      // submit_application, que rechaza el envio sin un token valido.
+      if (step === 1 && !formData.video_token) {
+        router.push(`/presentacion?activo_id=${formData.activo_id}`)
+        return
+      }
       setSubmitError(null)
       setStep(prev => prev + 1)
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -307,6 +319,7 @@ function ApplyForm() {
     try {
       const payload: ApplicationPayload = {
         activo_id: formData.activo_id,
+        video_token: formData.video_token,
         nombres: formData.nombres, apellidos: formData.apellidos,
         tipo_documento: formData.tipo_documento as any,
         numero_documento: formData.numero_documento,
@@ -467,7 +480,7 @@ function ApplyForm() {
               </div>
 
               <div className="grid gap-6">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-humania-gray font-medium">Nombres</Label>
                     <Input name="nombres" maxLength={111} value={formData.nombres} onChange={handleChange} placeholder="Ej. Juan Carlos" className={inputClass('nombres')} />
@@ -479,7 +492,7 @@ function ApplyForm() {
                     <ErrorMsg name="apellidos" errors={errors} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-humania-gray font-medium">Tipo Documento</Label>
                     <select name="tipo_documento" value={formData.tipo_documento} onChange={handleChange} className="flex h-12 w-full rounded-none border border-neutral-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand">
@@ -532,7 +545,7 @@ function ApplyForm() {
                   <ErrorMsg name="telefono" errors={errors} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-humania-gray font-medium">Ciudad / Núcleo de operación</Label>
                     <select
@@ -753,7 +766,7 @@ function ApplyForm() {
                   <Input name="fiador_nombre" maxLength={111} value={formData.fiador_nombre} onChange={handleChange} placeholder="Ej. Maria Fernández" className={inputClass('fiador_nombre')} />
                   <ErrorMsg name="fiador_nombre" errors={errors} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-humania-gray font-medium">Documento (Solo números)</Label>
                     <Input name="fiador_documento" maxLength={10} value={formData.fiador_documento} onChange={handleChange} placeholder="Ej. 1020304050" className={inputClass('fiador_documento')} />
@@ -814,7 +827,7 @@ function ApplyForm() {
                     <ErrorMsg name="ref1_nombre" errors={errors} />
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-humania-gray font-medium">Parentesco</Label>
                       <select name="ref1_relacion_seleccion" value={formData.ref1_relacion_seleccion} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref1_relacion ? 'border-red-500' : 'border-neutral-300'}`}>
@@ -834,7 +847,7 @@ function ApplyForm() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-humania-gray font-medium">Tiempo de conocerse</Label>
                       <select name="ref1_tiempo" value={formData.ref1_tiempo} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref1_tiempo ? 'border-red-500' : 'border-neutral-300'}`}>
@@ -874,7 +887,7 @@ function ApplyForm() {
                     <ErrorMsg name="ref2_nombre" errors={errors} />
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-humania-gray font-medium">Relación</Label>
                       <select name="ref2_relacion_seleccion" value={formData.ref2_relacion_seleccion} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref2_relacion ? 'border-red-500' : 'border-neutral-300'}`}>
@@ -894,7 +907,7 @@ function ApplyForm() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-humania-gray font-medium">Tiempo de conocerse</Label>
                       <select name="ref2_tiempo" value={formData.ref2_tiempo} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref2_tiempo ? 'border-red-500' : 'border-neutral-300'}`}>
@@ -964,7 +977,7 @@ function ApplyForm() {
               </div>
 
               <Dialog open={policyModalOpen} onOpenChange={setPolicyModalOpen}>
-                <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+                <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-2xl max-h-[85vh] flex flex-col">
                   <DialogHeader>
                     <DialogTitle className="text-humania-blue">{policyTitle || 'Política de Tratamiento y Protección de Datos Personales'}</DialogTitle>
                     <p className="text-xs text-humania-gray/70">Versión {policyVersion}</p>
@@ -1011,21 +1024,21 @@ function ApplyForm() {
                   variant="ghost"
                   onClick={prevStep}
                   disabled={isSubmitting}
-                  className="text-humania-gray hover:text-humania-blue hover:bg-neutral-50 px-6 py-6 rounded-none font-medium"
+                  className="text-humania-gray hover:text-humania-blue hover:bg-neutral-50 px-3 sm:px-6 py-6 rounded-none font-medium text-sm sm:text-base"
                 >
                   &larr; Volver
                 </Button>
               ) : <div></div>}
 
               {step < 7 ? (
-                <Button onClick={nextStep} className="bg-humania-blue hover:bg-humania-blue/90 text-white rounded-none px-10 py-6 text-base font-semibold shadow-md transition-transform active:scale-95">
+                <Button onClick={nextStep} className="bg-humania-blue hover:bg-humania-blue/90 text-white rounded-none px-6 sm:px-10 py-6 text-sm sm:text-base font-semibold shadow-md transition-transform active:scale-95">
                   Continuar
                 </Button>
               ) : (
                 <Button
                   onClick={handleSubmit}
                   disabled={isSubmitting || !policyReadToEnd || !dataAuthorization}
-                  className="bg-humania-blue hover:bg-humania-blue/90 text-white rounded-none px-10 py-6 text-base font-semibold shadow-md transition-transform active:scale-95 disabled:opacity-50"
+                  className="bg-humania-blue hover:bg-humania-blue/90 text-white rounded-none px-4 sm:px-10 py-6 text-sm sm:text-base font-semibold shadow-md transition-transform active:scale-95 disabled:opacity-50"
                 >
                   {isSubmitting ? 'Verificando...' : 'Enviar Solicitud'}
                 </Button>

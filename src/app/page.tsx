@@ -89,7 +89,7 @@ function VehicleOpportunityCard({ activo }: { activo: any }) {
 
         {/* CTA (Visible parcialmente, expande on hover) */}
         <div className="mt-8 relative z-10">
-          <Link href={`/apply?activo_id=${activo.id}`} className="block">
+          <Link href={`/presentacion?activo_id=${activo.id}`} className="block">
             <div className="w-full bg-humania-blue text-white font-medium text-center py-4 rounded-xl shadow-md group-hover:bg-humania-blue/90 transform group-hover:-translate-y-1 transition-all duration-300 animate-pulse">
               Aplicar a esta oportunidad
             </div>
@@ -131,11 +131,11 @@ export default async function Home() {
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-neutral-50 to-neutral-100 z-0 opacity-80"></div>
           
           <div className="relative z-10 max-w-5xl px-6 w-full flex flex-col items-center text-center space-y-10">
-            <h1 className="text-6xl md:text-8xl font-bold tracking-tighter text-humania-blue leading-[1.05]">
-              Movemos personas hacia<br/>
+            <h1 className="text-4xl sm:text-6xl md:text-8xl font-bold tracking-tighter text-humania-blue leading-[1.05]">
+              Movemos personas hacia<br className="hidden sm:inline" />{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-humania-gray to-humania-blue/80">nuevas oportunidades.</span>
             </h1>
-            <p className="text-lg md:text-2xl text-humania-gray max-w-3xl font-medium leading-relaxed">
+            <p className="text-base sm:text-lg md:text-2xl text-humania-gray max-w-3xl font-medium leading-relaxed">
               Conectamos personas con oportunidades de movilidad para trabajar, generar ingresos y construir algo propio.
             </p>
           </div>
