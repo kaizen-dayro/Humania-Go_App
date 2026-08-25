@@ -1385,3 +1385,23 @@ export async function setPresentacionDemoSegundos(segundos: number | null, motiv
   revalidatePath('/admin/presentacion')
   return { success: true }
 }
+
+// ==========================================
+// Nombre propio, editable por cualquier administrador (autoservicio)
+// ==========================================
+
+export async function setMiNombre(nombre: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('set_mi_nombre', { p_nombre: nombre })
+
+  if (error) {
+    console.error('Error actualizando nombre propio:', error)
+    return { success: false, error: error.message || 'No se pudo actualizar el nombre.' }
+  }
+
+  revalidatePath('/admin', 'layout')
+  return { success: true }
+}
