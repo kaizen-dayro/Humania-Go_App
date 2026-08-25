@@ -82,8 +82,8 @@ function ApplyForm() {
     ciudad_operacion_id: '', municipio_operacion_id: '', genero: '', barrio: '',
     tipo_perfil: 'CONDUCTOR_PLATAFORMA',
     plataformas: [] as string[], plataformas_otro: false, plataformas_otro_texto: '',
-    categoria_actividad_seleccion: '', categoria_actividad: '', anos_experiencia_declarados: '0',
-    licencia_declarada_vigente: false, licencia_categorias: [] as string[], cantidad_comparendos_declarados: '0',
+    categoria_actividad_seleccion: '', categoria_actividad: '', anos_experiencia_declarados: '',
+    licencia_declarada_vigente: false, licencia_categorias: [] as string[], cantidad_comparendos_declarados: '',
     fiador_nombre: '', fiador_documento: '', fiador_telefono: '',
     fiador_ingresos: '', fiador_finca_raiz: false,
     ref1_nombre: '', ref1_relacion_seleccion: '', ref1_relacion: '', ref1_telefono: '', ref1_tiempo: '', ref1_ocupacion_seleccion: '', ref1_ocupacion: '',
@@ -766,7 +766,7 @@ function ApplyForm() {
                 
                 <div className="space-y-3">
                   <Label className="text-humania-gray font-medium">¿Cuántos comparendos estimas tener pendientes?</Label>
-                  <Input name="cantidad_comparendos_declarados" maxLength={2} value={formData.cantidad_comparendos_declarados} onChange={handleChange} placeholder="Ej. 0" className={inputClass('cantidad_comparendos_declarados')} />
+                  <Input name="cantidad_comparendos_declarados" maxLength={2} value={formData.cantidad_comparendos_declarados} onChange={handleChange} placeholder="Ej. 2" className={inputClass('cantidad_comparendos_declarados')} />
                   <p className="text-xs text-humania-gray/70 font-medium mt-1">La cantidad de comparendos vigentes será tenida en cuenta durante el proceso de selección. Las postulaciones con más de 3 comparendos pueden no ser elegibles.</p>
                   <ErrorMsg name="cantidad_comparendos_declarados" errors={errors} />
                 </div>
