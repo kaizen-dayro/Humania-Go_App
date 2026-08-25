@@ -1332,20 +1332,20 @@ export async function getPresentacionVideoHistorial() {
 export async function getPresentacionConfiguracion() {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return { success: false, error: 'No autorizado', segmentacionActiva: false }
+  if (!session) return { success: false, error: 'No autorizado', segmentacionActiva: false, demoSegundos: null }
 
   const { data, error } = await supabase
     .from('presentacion_configuracion')
-    .select('segmentacion_activa')
+    .select('segmentacion_activa, demo_segundos')
     .eq('id', true)
     .single()
 
   if (error || !data) {
     console.error('Error obteniendo configuración de presentación:', error)
-    return { success: false, error: 'No se pudo cargar la configuración', segmentacionActiva: false }
+    return { success: false, error: 'No se pudo cargar la configuración', segmentacionActiva: false, demoSegundos: null }
   }
 
-  return { success: true, segmentacionActiva: data.segmentacion_activa as boolean }
+  return { success: true, segmentacionActiva: data.segmentacion_activa as boolean, demoSegundos: data.demo_segundos as number | null }
 }
 
 export async function setPresentacionSegmentacionActiva(activa: boolean, motivo: string) {
@@ -1361,6 +1361,25 @@ export async function setPresentacionSegmentacionActiva(activa: boolean, motivo:
   if (error) {
     console.error('Error actualizando segmentación de presentación:', error)
     return { success: false, error: error.message || 'No se pudo actualizar la configuración.' }
+  }
+
+  revalidatePath('/admin/presentacion')
+  return { success: true }
+}
+
+export async function setPresentacionDemoSegundos(segundos: number | null, motivo: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('set_presentacion_demo_segundos', {
+    p_segundos: segundos,
+    p_motivo: motivo
+  })
+
+  if (error) {
+    console.error('Error actualizando modo demo de presentación:', error)
+    return { success: false, error: error.message || 'No se pudo actualizar el modo demo.' }
   }
 
   revalidatePath('/admin/presentacion')

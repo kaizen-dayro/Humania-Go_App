@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { LETTERS_WITH_PUNCTUATION, capitalizarPalabras } from '@/lib/validation'
 import { setPresentacionSegmentacionActiva } from '../actions'
 import { VideoPerfilCard } from './VideoPerfilCard'
+import { DemoModeCard } from './DemoModeCard'
 
 type VersionRow = React.ComponentProps<typeof VideoPerfilCard>['historial'][number]
 
@@ -106,9 +107,11 @@ function SegmentacionToggle({ segmentacionActiva }: { segmentacionActiva: boolea
   )
 }
 
-export function PresentacionConfigPanel({ segmentacionActiva, historial }: { segmentacionActiva: boolean; historial: VersionRow[] }) {
+export function PresentacionConfigPanel({ segmentacionActiva, demoSegundos, historial }: { segmentacionActiva: boolean; demoSegundos: number | null; historial: VersionRow[] }) {
   return (
     <div className="space-y-8">
+      <DemoModeCard demoSegundosActual={demoSegundos} />
+
       <SegmentacionToggle segmentacionActiva={segmentacionActiva} />
 
       <VideoPerfilCard

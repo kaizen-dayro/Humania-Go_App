@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
     const { data: config, error: configError } = await supabase
       .from('presentacion_configuracion')
-      .select('segmentacion_activa')
+      .select('segmentacion_activa, demo_segundos')
       .eq('id', true)
       .maybeSingle()
 
@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'DB_ERROR' }, { status: 500 })
     }
 
+    const demoSegundos = config?.demo_segundos ?? null
     const cookiePerfil = req.cookies.get('humania_perfil')?.value
     const segmentacionActiva = config?.segmentacion_activa === true
     const perfilDetectado = segmentacionActiva && cookiePerfil && (PERFILES_VALIDOS as readonly string[]).includes(cookiePerfil)
@@ -50,12 +51,13 @@ export async function GET(req: NextRequest) {
       if (data) {
         return NextResponse.json({
           success: true,
-          data: { youtubeVideoId: data.youtube_video_id, titulo: data.titulo, perfil }
+          data: { youtubeVideoId: data.youtube_video_id, titulo: data.titulo, perfil },
+          demoSegundos
         })
       }
     }
 
-    return NextResponse.json({ success: true, data: null })
+    return NextResponse.json({ success: true, data: null, demoSegundos })
   } catch (err) {
     console.error('API video-actual Error:', err)
     return NextResponse.json({ success: false, error: 'SERVER_ERROR' }, { status: 500 })

@@ -20,7 +20,7 @@ export default async function PresentacionAdminPage() {
   }
 
   const { historial } = await getPresentacionVideoHistorial()
-  const { segmentacionActiva } = await getPresentacionConfiguracion()
+  const { segmentacionActiva, demoSegundos } = await getPresentacionConfiguracion()
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -29,7 +29,7 @@ export default async function PresentacionAdminPage() {
         <p className="text-humania-gray">El que ven los candidatos en /presentacion antes de postularse — exclusivo SUPER_ADMIN</p>
       </div>
 
-      <PresentacionConfigPanel segmentacionActiva={segmentacionActiva} historial={historial ?? []} />
+      <PresentacionConfigPanel segmentacionActiva={segmentacionActiva} demoSegundos={demoSegundos ?? null} historial={historial ?? []} />
     </div>
   )
 }
