@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { AlertCircle } from 'lucide-react'
 import {
   GENEROS, ApplicationPayload,
-  PLATAFORMA_OPTIONS, CATEGORIA_ACTIVIDAD_OPTIONS, PARENTESCO_OPTIONS, TIEMPO_CONOCERSE_OPTIONS, INGRESOS_OPTIONS,
+  PLATAFORMA_OPTIONS, CATEGORIA_ACTIVIDAD_OPTIONS, PARENTESCO_FAMILIAR_OPTIONS, RELACION_PERSONAL_OPTIONS, TIEMPO_CONOCERSE_OPTIONS, INGRESOS_OPTIONS,
 } from '@/lib/domain/eligibility'
 import { capitalizarPalabras, PHONE_CO } from '@/lib/validation'
 
@@ -264,7 +264,7 @@ function ApplyForm() {
       // Familiar
       if (formData.ref1_nombre.trim().length < 3) newErrors.ref1_nombre = "Mínimo 3 letras."
       if (!formData.ref1_relacion_seleccion) newErrors.ref1_relacion = "Selecciona una opción."
-      else if (formData.ref1_relacion_seleccion === 'Otro' && formData.ref1_relacion.trim().length < 2) newErrors.ref1_relacion = "Mínimo 2 letras."
+      else if (formData.ref1_relacion_seleccion === 'Otro familiar' && formData.ref1_relacion.trim().length < 2) newErrors.ref1_relacion = "Mínimo 2 letras."
       if (!PHONE_CO.test(formData.ref1_telefono)) newErrors.ref1_telefono = "Debe tener exactamente 10 números e iniciar en 3."
       if (!formData.ref1_tiempo) newErrors.ref1_tiempo = "Selecciona una opción."
       if (!formData.ref1_ocupacion_seleccion) newErrors.ref1_ocupacion = "Selecciona una opción."
@@ -835,10 +835,9 @@ function ApplyForm() {
                       <Label className="text-humania-gray font-medium">Parentesco</Label>
                       <select name="ref1_relacion_seleccion" value={formData.ref1_relacion_seleccion} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref1_relacion ? 'border-red-500' : 'border-neutral-300'}`}>
                         <option value="" disabled>Selecciona una opción</option>
-                        {PARENTESCO_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                        <option value="Otro">Otro</option>
+                        {PARENTESCO_FAMILIAR_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
-                      {formData.ref1_relacion_seleccion === 'Otro' && (
+                      {formData.ref1_relacion_seleccion === 'Otro familiar' && (
                         <Input name="ref1_relacion" maxLength={15} value={formData.ref1_relacion} onChange={handleChange} placeholder="Especifica (máx. 15 caracteres)" className={inputClass('ref1_relacion')} />
                       )}
                       <ErrorMsg name="ref1_relacion" errors={errors} />
@@ -892,11 +891,10 @@ function ApplyForm() {
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label className="text-humania-gray font-medium">Relación</Label>
+                      <Label className="text-humania-gray font-medium">Relación con el candidato</Label>
                       <select name="ref2_relacion_seleccion" value={formData.ref2_relacion_seleccion} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref2_relacion ? 'border-red-500' : 'border-neutral-300'}`}>
                         <option value="" disabled>Selecciona una opción</option>
-                        {PARENTESCO_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                        <option value="Otro">Otro</option>
+                        {RELACION_PERSONAL_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                       {formData.ref2_relacion_seleccion === 'Otro' && (
                         <Input name="ref2_relacion" maxLength={15} value={formData.ref2_relacion} onChange={handleChange} placeholder="Especifica (máx. 15 caracteres)" className={inputClass('ref2_relacion')} />

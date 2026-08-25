@@ -27,10 +27,20 @@ export const CATEGORIA_ACTIVIDAD_OPTIONS = [
   { value: 'Alimentación', ejemplo: 'Mesero(a)' },
 ] as const;
 
-/** Parentesco/Relación de las referencias (Familiar y Personal comparten esta lista). */
-export const PARENTESCO_OPTIONS = [
-  'Madre', 'Padre', 'Hermano(a)', 'Esposo(a) / Cónyuge', 'Hijo(a)',
-  'Abuelo(a)', 'Tío(a)', 'Amigo(a)', 'Compañero(a) de Trabajo', 'Vecino(a)',
+/**
+ * Parentesco (Referencia Familiar) y Relación (Referencia Personal):
+ * listas distintas a propósito (2026-08-25, pedido explícito del usuario)
+ * -- antes compartían una sola lista, lo cual no tenía sentido en
+ * contexto humano ("Amigo(a)" no es un parentesco familiar). La última
+ * opción de cada una ("Otro familiar" / "Otro") es la que habilita el
+ * campo de texto libre -- no hay una opción "Otro" genérica aparte.
+ */
+export const PARENTESCO_FAMILIAR_OPTIONS = [
+  'Madre', 'Padre', 'Hermano(a)', 'Hijo(a)', 'Cónyuge', 'Otro familiar',
+] as const;
+
+export const RELACION_PERSONAL_OPTIONS = [
+  'Amigo(a)', 'Vecino(a)', 'Compañero(a) de trabajo', 'Excompañero(a) de trabajo', 'Conocido(a)', 'Otro',
 ] as const;
 
 /** Tiempo de conocerse de las referencias (Documento 16 S8, cerrado, sin "Otro"). */
