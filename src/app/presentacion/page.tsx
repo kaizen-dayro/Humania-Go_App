@@ -54,6 +54,7 @@ function PresentacionView() {
   const [notFound, setNotFound] = useState(false)
 
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null)
+  const [perfilResuelto, setPerfilResuelto] = useState<string>('GENERAL')
   const [loadingVideo, setLoadingVideo] = useState(true)
 
   const [apiReady, setApiReady] = useState(false)
@@ -87,7 +88,10 @@ function PresentacionView() {
   useEffect(() => {
     fetch('/api/presentacion/video-actual')
       .then(res => res.json())
-      .then(res => setYoutubeVideoId(res.success && res.data ? res.data.youtubeVideoId : null))
+      .then(res => {
+        setYoutubeVideoId(res.success && res.data ? res.data.youtubeVideoId : null)
+        setPerfilResuelto(res.success && res.data ? res.data.perfil : 'GENERAL')
+      })
       .catch(() => setYoutubeVideoId(null))
       .finally(() => setLoadingVideo(false))
   }, [])
@@ -190,8 +194,8 @@ function PresentacionView() {
 
   const handlePostularme = useCallback(() => {
     if (!activoId || !videoToken) return
-    router.push(`/apply?activo_id=${activoId}&video_token=${videoToken}`)
-  }, [activoId, videoToken, router])
+    router.push(`/apply?activo_id=${activoId}&video_token=${videoToken}&perfil=${perfilResuelto}`)
+  }, [activoId, videoToken, perfilResuelto, router])
 
   if (loadingOportunidad || loadingVideo) {
     return <div className="min-h-screen bg-[#0B0E10] flex items-center justify-center text-white/60 text-sm">Cargando…</div>

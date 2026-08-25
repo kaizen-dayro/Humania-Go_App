@@ -88,7 +88,8 @@ export async function POST(req: NextRequest) {
         authorization_channel: 'WEB_APPLY',
         request_id: requestId
       },
-      p_video_token: data.video_token
+      p_video_token: data.video_token,
+      p_perfil_publicitario: data.perfil_publicitario
     })
 
     if (rpcError) {

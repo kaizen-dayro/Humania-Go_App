@@ -50,6 +50,7 @@ function ApplyForm() {
   const searchParams = useSearchParams()
   const initialActivoId = searchParams.get('activo_id')
   const initialVideoToken = searchParams.get('video_token')
+  const initialPerfil = searchParams.get('perfil')
 
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -75,6 +76,7 @@ function ApplyForm() {
   const [formData, setFormData] = useState({
     activo_id: initialActivoId || '',
     video_token: initialVideoToken || '',
+    perfil_publicitario: initialPerfil || 'GENERAL',
     nombres: '', apellidos: '', tipo_documento: 'CC', numero_documento: '',
     correo_electronico: '', confirmacion_correo: '', telefono: '',
     ciudad_operacion_id: '', municipio_operacion_id: '', genero: '', barrio: '',
@@ -320,6 +322,7 @@ function ApplyForm() {
       const payload: ApplicationPayload = {
         activo_id: formData.activo_id,
         video_token: formData.video_token,
+        perfil_publicitario: formData.perfil_publicitario as any,
         nombres: formData.nombres, apellidos: formData.apellidos,
         tipo_documento: formData.tipo_documento as any,
         numero_documento: formData.numero_documento,

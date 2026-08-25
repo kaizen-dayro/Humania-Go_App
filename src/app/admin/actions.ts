@@ -1289,7 +1289,7 @@ export async function rechazarRecuperacionAction(solicitudId: string) {
 // Fase 15b — video de /presentacion, editable por el SUPER_ADMIN
 // ==========================================
 
-export async function setPresentacionVideo(youtubeVideoId: string, youtubeUrlOriginal: string, titulo: string, motivo: string) {
+export async function setPresentacionVideo(youtubeVideoId: string, youtubeUrlOriginal: string, titulo: string, motivo: string, perfil: 'GENERAL' | 'CONDUCTOR' | 'INDEPENDIENTE') {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return { success: false, error: 'No autorizado' }
@@ -1298,7 +1298,8 @@ export async function setPresentacionVideo(youtubeVideoId: string, youtubeUrlOri
     p_youtube_video_id: youtubeVideoId,
     p_youtube_url_original: youtubeUrlOriginal,
     p_titulo: titulo || null,
-    p_motivo: motivo
+    p_motivo: motivo,
+    p_perfil: perfil
   })
 
   if (error) {
@@ -1317,7 +1318,7 @@ export async function getPresentacionVideoHistorial() {
 
   const { data: historial, error } = await supabase
     .from('presentacion_video_versions')
-    .select('id, youtube_video_id, youtube_url_original, titulo, motivo, is_current, creado_en, admin_users(nombre)')
+    .select('id, youtube_video_id, youtube_url_original, titulo, motivo, is_current, perfil, creado_en, admin_users(nombre)')
     .order('creado_en', { ascending: false })
 
   if (error || !historial) {
@@ -1326,4 +1327,42 @@ export async function getPresentacionVideoHistorial() {
   }
 
   return { success: true, historial }
+}
+
+export async function getPresentacionConfiguracion() {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado', segmentacionActiva: false }
+
+  const { data, error } = await supabase
+    .from('presentacion_configuracion')
+    .select('segmentacion_activa')
+    .eq('id', true)
+    .single()
+
+  if (error || !data) {
+    console.error('Error obteniendo configuración de presentación:', error)
+    return { success: false, error: 'No se pudo cargar la configuración', segmentacionActiva: false }
+  }
+
+  return { success: true, segmentacionActiva: data.segmentacion_activa as boolean }
+}
+
+export async function setPresentacionSegmentacionActiva(activa: boolean, motivo: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('set_presentacion_segmentacion_activa', {
+    p_activa: activa,
+    p_motivo: motivo
+  })
+
+  if (error) {
+    console.error('Error actualizando segmentación de presentación:', error)
+    return { success: false, error: error.message || 'No se pudo actualizar la configuración.' }
+  }
+
+  revalidatePath('/admin/presentacion')
+  return { success: true }
 }

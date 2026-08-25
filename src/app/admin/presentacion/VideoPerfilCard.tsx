@@ -11,6 +11,8 @@ import { LETTERS_WITH_PUNCTUATION, capitalizarPalabras } from '@/lib/validation'
 import { extractYouTubeVideoId } from '@/lib/youtube'
 import { setPresentacionVideo } from '../actions'
 
+type Perfil = 'GENERAL' | 'CONDUCTOR' | 'INDEPENDIENTE'
+
 type VersionRow = {
   id: string
   youtube_video_id: string
@@ -18,6 +20,7 @@ type VersionRow = {
   titulo: string | null
   motivo: string
   is_current: boolean
+  perfil: string
   creado_en: string
   admin_users: { nombre: string }[] | null
 }
@@ -32,7 +35,7 @@ function textoConLimpieza(setter: (v: string) => void) {
   }
 }
 
-export function PresentacionVideoForm({ historial }: { historial: VersionRow[] }) {
+export function VideoPerfilCard({ perfil, titulo: tituloCard, descripcion, historial }: { perfil: Perfil; titulo: string; descripcion: string; historial: VersionRow[] }) {
   const router = useRouter()
   const [urlInput, setUrlInput] = useState('')
   const [titulo, setTitulo] = useState('')
@@ -44,8 +47,9 @@ export function PresentacionVideoForm({ historial }: { historial: VersionRow[] }
   const parsedId = useMemo(() => (urlInput.trim() ? extractYouTubeVideoId(urlInput) : null), [urlInput])
   const urlInvalida = urlInput.trim().length > 0 && !parsedId
 
-  const actual = historial.find(v => v.is_current)
-  const anteriores = historial.filter(v => !v.is_current)
+  const deEstePerfil = historial.filter(v => v.perfil === perfil)
+  const actual = deEstePerfil.find(v => v.is_current)
+  const anteriores = deEstePerfil.filter(v => !v.is_current)
 
   async function handleSubmit() {
     setError('')
@@ -54,7 +58,7 @@ export function PresentacionVideoForm({ historial }: { historial: VersionRow[] }
     if (motivo.trim().length < 10) { setError('El motivo debe tener al menos 10 caracteres.'); return }
 
     setSubmitting(true)
-    const res = await setPresentacionVideo(parsedId, urlInput.trim(), titulo.trim(), motivo.trim())
+    const res = await setPresentacionVideo(parsedId, urlInput.trim(), titulo.trim(), motivo.trim(), perfil)
     setSubmitting(false)
 
     if (!res.success) { setError(res.error || 'No se pudo actualizar el video.'); return }
@@ -67,7 +71,12 @@ export function PresentacionVideoForm({ historial }: { historial: VersionRow[] }
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm font-bold text-humania-blue">{tituloCard}</p>
+        <p className="text-xs text-humania-gray/70">{descripcion}</p>
+      </div>
+
       {actual && (
         <div className="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
           <p className="text-[11px] font-bold text-humania-gray/50 uppercase tracking-widest px-6 pt-5">Video vigente ahora</p>
@@ -121,7 +130,7 @@ export function PresentacionVideoForm({ historial }: { historial: VersionRow[] }
         </div>
 
         {error && <p className="text-red-600 text-sm flex items-center gap-1.5"><AlertCircle className="w-4 h-4" />{error}</p>}
-        {success && <p className="text-green-700 text-sm flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" />Video actualizado — ya es el que verán los próximos candidatos.</p>}
+        {success && <p className="text-green-700 text-sm flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" />Video actualizado — ya es el que verán los próximos candidatos de este perfil.</p>}
 
         <Button
           onClick={handleSubmit}
@@ -134,7 +143,7 @@ export function PresentacionVideoForm({ historial }: { historial: VersionRow[] }
 
       {anteriores.length > 0 && (
         <div className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
-          <p className="text-[11px] font-bold text-humania-gray/50 uppercase tracking-widest mb-4">Videos anteriores</p>
+          <p className="text-[11px] font-bold text-humania-gray/50 uppercase tracking-widest mb-4">Videos anteriores de este perfil</p>
           <div className="space-y-3">
             {anteriores.map(v => (
               <div key={v.id} className="border border-neutral-100 rounded-md p-4 flex items-center justify-between gap-4">

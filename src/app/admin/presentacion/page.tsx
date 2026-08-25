@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
-import { getPresentacionVideoHistorial } from '../actions'
-import { PresentacionVideoForm } from './PresentacionVideoForm'
+import { getPresentacionVideoHistorial, getPresentacionConfiguracion } from '../actions'
+import { PresentacionConfigPanel } from './PresentacionConfigPanel'
 
 export default async function PresentacionAdminPage() {
   const supabase = await createClient()
@@ -20,6 +20,7 @@ export default async function PresentacionAdminPage() {
   }
 
   const { historial } = await getPresentacionVideoHistorial()
+  const { segmentacionActiva } = await getPresentacionConfiguracion()
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -28,7 +29,7 @@ export default async function PresentacionAdminPage() {
         <p className="text-humania-gray">El que ven los candidatos en /presentacion antes de postularse — exclusivo SUPER_ADMIN</p>
       </div>
 
-      <PresentacionVideoForm historial={historial ?? []} />
+      <PresentacionConfigPanel segmentacionActiva={segmentacionActiva} historial={historial ?? []} />
     </div>
   )
 }
