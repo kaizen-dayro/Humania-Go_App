@@ -9,7 +9,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false }
 });
 
-export type EmailEventType = 'APPLICATION_RECEIVED' | 'INTERVIEW_INVITATION' | 'APPLICATION_REJECTED' | 'FINAL_SELECTION' | 'BACKUP_WAITLIST' | 'DESCARTE_EDAD_AGRADECIMIENTO';
+export type EmailEventType = 'APPLICATION_RECEIVED' | 'INTERVIEW_INVITATION' | 'APPLICATION_REJECTED' | 'FINAL_SELECTION' | 'BACKUP_WAITLIST' | 'DESCARTE_EDAD_AGRADECIMIENTO' | 'DESCARTE_COMPARENDOS_AGRADECIMIENTO';
 
 interface SendEmailOptions {
   // Opcional (Fase 17): un descarte por edad nunca llega a crear un

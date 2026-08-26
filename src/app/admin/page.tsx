@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
-import { Users, Car, CheckCircle2, AlertTriangle, UserX } from 'lucide-react'
+import { Users, Car, CheckCircle2, AlertTriangle, UserX, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 
 export default async function AdminDashboard() {
@@ -13,6 +13,16 @@ export default async function AdminDashboard() {
     redirect('/admin/login')
   }
 
+  // Fase 18: el conteo de descartados por comparendos solo lo puede ver
+  // SUPER_ADMIN (pedido explícito del usuario) -- se evita la consulta por
+  // completo para un ADMIN normal, aunque RLS ya la restringiría igual.
+  const { data: caller } = await supabase
+    .from('admin_users')
+    .select('role')
+    .eq('id', session.user.id)
+    .single()
+  const esSuperAdmin = caller?.role === 'SUPER_ADMIN'
+
   // Fetch Stats in parallel
   const [
     { count: totalActivos },
@@ -20,14 +30,18 @@ export default async function AdminDashboard() {
     { count: totalCandidatos },
     { count: candidatosRevision },
     { count: candidatosFinalistas },
-    { count: descartadosPorEdad }
+    { count: descartadosPorEdad },
+    { count: descartadosPorComparendos }
   ] = await Promise.all([
     supabase.from('activos').select('*', { count: 'exact', head: true }),
     supabase.from('activos').select('*', { count: 'exact', head: true }).eq('estado', 'DISPONIBLE'),
     supabase.from('candidatos').select('*', { count: 'exact', head: true }),
     supabase.from('candidatos').select('*', { count: 'exact', head: true }).eq('estado', 'REVISION_PRELIMINAR'),
     supabase.from('candidatos').select('*', { count: 'exact', head: true }).in('estado', ['SELECCIONADO', 'EN_ESPERA']),
-    supabase.from('candidatos_descartados_por_edad').select('*', { count: 'exact', head: true })
+    supabase.from('candidatos_descartados_por_edad').select('*', { count: 'exact', head: true }),
+    esSuperAdmin
+      ? supabase.from('candidatos_descartados_por_comparendos').select('*', { count: 'exact', head: true })
+      : Promise.resolve({ count: null })
   ])
 
   return (
@@ -109,6 +123,27 @@ export default async function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {esSuperAdmin && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <ShieldAlert className="w-4 h-4 text-humania-gray/50" />
+            <h2 className="text-xs font-bold text-humania-gray/50 uppercase tracking-widest">Solo SUPER_ADMIN</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-lg shadow-sm border border-neutral-200 flex flex-col justify-between">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-sm font-bold text-humania-gray/50 uppercase tracking-widest">Descartados (Comparendos)</h3>
+                <UserX className="w-5 h-5 text-humania-blue/30" />
+              </div>
+              <div>
+                <p className="text-4xl font-bold text-humania-blue">{descartadosPorComparendos || 0}</p>
+                <p className="text-xs text-humania-gray mt-2 font-medium">Más de 4 comparendos, o sin paz y salvo ni acuerdo de pago</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
         <Link href="/admin/candidatos" className="group bg-white p-8 rounded-lg shadow-sm border border-neutral-200 hover:border-humania-blue transition-all flex justify-between items-center">

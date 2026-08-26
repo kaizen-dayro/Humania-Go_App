@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/cron/mantenimiento-descartes-edad",
+      "path": "/api/cron/mantenimiento-descartes",
       "schedule": "0 13 * * *"
     }
   ]

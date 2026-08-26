@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { ApplicationPayloadSchema, evaluateInitialEligibility, edadFueraDeRangoElegible } from '@/lib/domain/eligibility'
+import { ApplicationPayloadSchema, evaluateInitialEligibility, edadFueraDeRangoElegible, evaluateComparendosFilter } from '@/lib/domain/eligibility'
 import { sendCandidateEmail } from '@/lib/services/email'
 import { checkSimitFines } from '@/lib/services/simit'
 
@@ -61,18 +61,52 @@ export async function POST(req: NextRequest) {
       }, { status: 201 })
     }
 
-    // 2. Reglas de Negocio / Eligibility
-    const eligibilityResult = evaluateInitialEligibility(data)
-
-    // 2b. Validación de multas SIMIT (fail-open: un fallo/timeout/límite de
-    // consultas de la API externa no bloquea ni descarta al candidato).
+    // 2. Consulta SIMIT (fail-open: un fallo/timeout/límite de consultas de
+    // la API externa no bloquea ni descarta al candidato -- se usa el
+    // número declarado como respaldo, ver evaluateComparendosFilter).
+    // Movida antes del filtro de comparendos (Fase 18) porque ese filtro
+    // necesita el número real, no solo lo declarado.
     const simitResult = await checkSimitFines(data.numero_documento)
-    const razones = [...eligibilityResult.razones]
-    let estadoFinal = eligibilityResult.estado
-    if (simitResult.simit_estado === 'DESCARTADO') {
-      estadoFinal = 'DESCARTADO'
-      razones.push('SIMIT_MULTAS_EXCEDEN_LIMITE')
+
+    // 2b. Filtro de comparendos con paz y salvo / acuerdo de pago (Fase 18,
+    // 2026-08-25): igual que el filtro de edad, si no pasa, el candidato
+    // NUNCA llega a crear una fila en `candidatos` -- solo un registro
+    // mínimo aparte (contador visible solo para SUPER_ADMIN + agradecimiento
+    // a las 24h). La persona no se entera: la respuesta es exactamente
+    // igual a un envío exitoso.
+    const comparendosFilter = evaluateComparendosFilter(
+      data.cantidad_comparendos_declarados,
+      data.paz_y_salvo_declarado,
+      data.acuerdo_pago_declarado,
+      simitResult
+    )
+
+    if (!comparendosFilter.pasa) {
+      const { error: descarteError } = await supabaseAdmin.rpc('registrar_descarte_por_comparendos', {
+        p_activo_id: data.activo_id,
+        p_nombres: data.nombres,
+        p_correo_electronico: data.correo_electronico,
+        p_comparendos_declarados: data.cantidad_comparendos_declarados,
+        p_simit_number_fines: simitResult.number_fines,
+        p_paz_y_salvo_declarado: data.paz_y_salvo_declarado ?? null,
+        p_acuerdo_pago_declarado: data.acuerdo_pago_declarado ?? null
+      })
+
+      if (descarteError) {
+        console.error(`Error registrando descarte por comparendos [request_id=${requestId}]:`, descarteError)
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: { id: null, estado_preliminar: 'DESCARTADO', razones: [] }
+      }, { status: 201 })
     }
+
+    // 3. Reglas de Negocio / Eligibility restantes (licencia, fiador -- el
+    // comparendos ya se resolvió arriba)
+    const eligibilityResult = evaluateInitialEligibility(data)
+    const razones = [...eligibilityResult.razones]
+    const estadoFinal = eligibilityResult.estado
 
     const candidatoData = {
       activo_id: data.activo_id,
@@ -94,14 +128,19 @@ export async function POST(req: NextRequest) {
       licencia_categorias: data.licencia_categorias,
       cantidad_comparendos_declarados: data.cantidad_comparendos_declarados,
       estado: estadoFinal,
-      simit_estado: simitResult.simit_estado,
-      simit_number_fines: simitResult.simit_number_fines,
-      simit_total_fines: simitResult.simit_total_fines,
-      simit_consultado_at: simitResult.simit_consultado_at,
-      simit_respuesta_raw: simitResult.simit_respuesta_raw
+      // simit_estado solo puede llegar aquí como 'APROBADO' o 'NO_CONSULTADO'
+      // -- el caso 'DESCARTADO' ya se resolvió arriba (2b) y nunca llega a
+      // este punto del código.
+      simit_estado: simitResult.consultado ? 'APROBADO' : 'NO_CONSULTADO',
+      simit_number_fines: simitResult.number_fines,
+      simit_total_fines: simitResult.total_fines,
+      simit_consultado_at: simitResult.consultado_at,
+      simit_respuesta_raw: simitResult.respuesta_raw,
+      paz_y_salvo_declarado: data.paz_y_salvo_declarado ?? null,
+      acuerdo_pago_declarado: data.acuerdo_pago_declarado ?? null
     }
 
-    // 3. Operación Transaccional en PostgreSQL
+    // 4. Operación Transaccional en PostgreSQL
     const { data: candidateId, error: rpcError } = await supabaseAdmin.rpc('submit_application', {
       p_candidato: candidatoData,
       p_fiador: data.fiador,
@@ -147,7 +186,7 @@ export async function POST(req: NextRequest) {
       }, { status: 500 })
     }
 
-    // 4. Enviar Correo de Confirmación
+    // 5. Enviar Correo de Confirmación
     // El envío del correo no debe bloquear ni revertir la transacción si falla.
     // Esto se maneja asincrónicamente o simplemente no lanzamos error si sendCandidateEmail falla.
     if (candidateId) {

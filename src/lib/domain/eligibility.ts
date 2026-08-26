@@ -1,5 +1,8 @@
 import { z } from 'zod'
 import { PHONE_CO } from '@/lib/validation'
+import { SIMIT_MAX_FINES_REQUIRING_VALIDATION, type SimitQueryResult } from '@/lib/services/simit'
+
+export { SIMIT_MAX_FINES_REQUIRING_VALIDATION }
 
 // ==========================================
 // 1. ZOD SCHEMAS (Para validación estricta frontend y backend)
@@ -154,6 +157,13 @@ export const ApplicationPayloadSchema = z.object({
   cantidad_comparendos_declarados: z.number()
     .min(0, "Mínimo 0")
     .max(10, "Máximo 10"),
+  // Fase 18 (2026-08-25): solo aplican -- y solo se validan como
+  // obligatorios -- cuando cantidad_comparendos_declarados está entre 1 y
+  // SIMIT_MAX_FINES_REQUIRING_VALIDATION (ver .superRefine debajo y
+  // evaluateComparendosFilter). Son datos DECLARADOS por el candidato, no
+  // verificados por Humania -- ver la distinción explícita en el nombre.
+  paz_y_salvo_declarado: z.boolean().nullable().optional(),
+  acuerdo_pago_declarado: z.boolean().nullable().optional(),
 
   fiador: GuarantorSchema.nullable(),
   referencias: z.array(ReferenceSchema).length(2, "Debes incluir exactamente 2 referencias"),
@@ -178,6 +188,21 @@ export const ApplicationPayloadSchema = z.object({
 }, {
   message: "Selecciona al menos una opción para tu perfil de actividad",
   path: ["plataformas"],
+}).superRefine((data, ctx) => {
+  // Fase 18: si el candidato declara entre 1 y SIMIT_MAX_FINES_REQUIRING_VALIDATION
+  // comparendos, las preguntas de paz y salvo / acuerdo de pago pasan a ser
+  // obligatorias -- exactamente el mismo rango que activa las preguntas en
+  // el formulario (ver Paso 4 de /apply).
+  const requierePazYSalvo = data.cantidad_comparendos_declarados >= 1
+    && data.cantidad_comparendos_declarados <= SIMIT_MAX_FINES_REQUIRING_VALIDATION
+  if (!requierePazYSalvo) return
+  if (typeof data.paz_y_salvo_declarado !== 'boolean') {
+    ctx.addIssue({ code: 'custom', path: ['paz_y_salvo_declarado'], message: 'Debes responder si tienes paz y salvo.' })
+    return
+  }
+  if (data.paz_y_salvo_declarado === false && typeof data.acuerdo_pago_declarado !== 'boolean') {
+    ctx.addIssue({ code: 'custom', path: ['acuerdo_pago_declarado'], message: 'Debes responder si tienes acuerdo de pago.' })
+  }
 })
 
 export type ApplicationPayload = z.infer<typeof ApplicationPayloadSchema>
@@ -208,7 +233,11 @@ export function evaluateInitialEligibility(data: ApplicationPayload): Eligibilit
   const razones: string[] = []
 
   if (!data.licencia_declarada_vigente) razones.push("LICENCIA_NO_VIGENTE_DECLARADA")
-  if (data.cantidad_comparendos_declarados > 3) razones.push("EXCESO_COMPARENDOS_DECLARADOS")
+  // El filtro de comparendos (Fase 18) ya NO vive aquí -- se resuelve antes,
+  // en /api/apply/route.ts, con evaluateComparendosFilter (abajo), porque
+  // necesita el número real de SIMIT además de lo declarado. Si no pasa, la
+  // postulación nunca llega a este punto (mismo patrón de descarte
+  // silencioso que el filtro de edad, Fase 17).
   if (!data.fiador) razones.push("FIADOR_NO_PROPORCIONADO")
   // Fase 17: la finca raíz del fiador reemplaza el requisito de ingreso --
   // cualquiera de las dos condiciones alcanza, ya no solo el ingreso.
@@ -219,6 +248,58 @@ export function evaluateInitialEligibility(data: ApplicationPayload): Eligibilit
   }
 
   return { estado: 'REVISION_PRELIMINAR', razones: [] }
+}
+
+export type ComparendosFilterResult = {
+  pasa: boolean
+  comparendosEfectivos: number
+  fuenteComparendos: 'SIMIT' | 'DECLARADO'
+  razon?: string
+}
+
+/**
+ * Filtro de comparendos (Fase 18, 2026-08-25). Árbol de decisión:
+ *   0 comparendos                              -> PASA
+ *   1 a SIMIT_MAX_FINES_REQUIRING_VALIDATION    -> PASA solo con paz y salvo,
+ *                                                   o si no, con acuerdo de pago
+ *   más de SIMIT_MAX_FINES_REQUIRING_VALIDATION -> NO PASA, sin excepción
+ *
+ * El número real de SIMIT manda cuando la consulta fue exitosa (para
+ * resolver el caso real que motivó esta fase: SIMIT no siempre está
+ * actualizado, pero cuando SÍ responde, es la fuente más confiable). Si
+ * SIMIT no se pudo consultar (fail-open, igual que el resto del sistema),
+ * se usa el número declarado por el candidato junto con lo que haya
+ * respondido en el formulario.
+ *
+ * Caso borde confirmado explícitamente por el usuario (2026-08-25): si
+ * SIMIT reporta un número real en el rango 1-4 pero el candidato declaró 0
+ * (por lo que el formulario nunca le mostró las preguntas), se trata como
+ * si hubiera respondido "No" a ambas -> NO PASA. Nunca se aprueba a nadie
+ * sin una respuesta afirmativa real a paz y salvo o acuerdo de pago.
+ */
+export function evaluateComparendosFilter(
+  comparendosDeclarados: number,
+  pazYSalvoDeclarado: boolean | null | undefined,
+  acuerdoPagoDeclarado: boolean | null | undefined,
+  simit: Pick<SimitQueryResult, 'consultado' | 'number_fines'>
+): ComparendosFilterResult {
+  const usarSimit = simit.consultado && simit.number_fines !== null
+  const comparendosEfectivos = usarSimit ? (simit.number_fines as number) : comparendosDeclarados
+  const fuenteComparendos: 'SIMIT' | 'DECLARADO' = usarSimit ? 'SIMIT' : 'DECLARADO'
+
+  if (comparendosEfectivos === 0) {
+    return { pasa: true, comparendosEfectivos, fuenteComparendos }
+  }
+  if (comparendosEfectivos > SIMIT_MAX_FINES_REQUIRING_VALIDATION) {
+    return { pasa: false, comparendosEfectivos, fuenteComparendos, razon: 'COMPARENDOS_FUERA_DE_RANGO' }
+  }
+  if (pazYSalvoDeclarado === true) {
+    return { pasa: true, comparendosEfectivos, fuenteComparendos }
+  }
+  if (acuerdoPagoDeclarado === true) {
+    return { pasa: true, comparendosEfectivos, fuenteComparendos }
+  }
+  return { pasa: false, comparendosEfectivos, fuenteComparendos, razon: 'SIN_PAZ_Y_SALVO_NI_ACUERDO_PAGO' }
 }
 
 export type RequirementEvaluation = {
@@ -238,11 +319,19 @@ export function evaluateCandidateRequirements(data: any): RequirementEvaluation[
     evaluations.push({ requirement: 'LICENCIA', status: 'FAIL', label: 'Licencia no vigente', reason: 'El candidato indicó no tener licencia vigente' });
   }
 
-  // Comparendos
-  if (data.cantidad_comparendos_declarados <= 3) {
-    evaluations.push({ requirement: 'COMPARENDOS', status: 'PASS', label: 'Comparendos dentro del límite', reason: `${data.cantidad_comparendos_declarados} reportados` });
+  // Comparendos (Fase 18): todo candidato que llega a existir en esta tabla
+  // ya pasó el filtro (0, o 1-4 con paz y salvo/acuerdo de pago) -- ese
+  // filtro corre antes de crear la fila, en /api/apply/route.ts. Lo que se
+  // muestra aquí es CÓMO pasó, como contexto para el equipo humano.
+  const comparendosEfectivos = data.simit_number_fines ?? data.cantidad_comparendos_declarados;
+  if (comparendosEfectivos === 0) {
+    evaluations.push({ requirement: 'COMPARENDOS', status: 'PASS', label: 'Sin comparendos', reason: '0 comparendos reportados' });
+  } else if (data.paz_y_salvo_declarado) {
+    evaluations.push({ requirement: 'COMPARENDOS', status: 'PASS', label: 'Comparendos con paz y salvo', reason: `${comparendosEfectivos} comparendos declarados, con paz y salvo declarado` });
+  } else if (data.acuerdo_pago_declarado) {
+    evaluations.push({ requirement: 'COMPARENDOS', status: 'PASS', label: 'Comparendos con acuerdo de pago', reason: `${comparendosEfectivos} comparendos declarados, con acuerdo de pago declarado (sin paz y salvo)` });
   } else {
-    evaluations.push({ requirement: 'COMPARENDOS', status: 'FAIL', label: 'Exceso de comparendos', reason: `${data.cantidad_comparendos_declarados} reportados (límite: 3)` });
+    evaluations.push({ requirement: 'COMPARENDOS', status: 'PENDING_VERIFICATION', label: 'Comparendos', reason: `${comparendosEfectivos} comparendos reportados, sin paz y salvo ni acuerdo de pago registrados` });
   }
 
   // Comparendos vs. SIMIT: el candidato declara una cantidad en el
@@ -342,5 +431,28 @@ export function evaluacionAvanzadaCompleta(evaluacionRaw: EvaluacionAvanzada | E
   if (!evaluacion.con_quien_vive?.trim()) return false
   if (evaluacion.personas_dependientes === null || evaluacion.personas_dependientes === undefined) return false
   if (!evaluacion.descripcion_responsabilidades?.trim()) return false
+  return true
+}
+
+/**
+ * Completitud de la visita domiciliaria (Fase 19, 2026-08-25). Debe
+ * coincidir exactamente con la validación en la RPC
+ * bulk_change_candidate_status (misma condición: realizada = true Y
+ * calificación no nula -- las observaciones obligatorias cuando la
+ * calificación es "Apto con reserva" ya las exige el CHECK de la propia
+ * tabla, así que no hace falta repetir esa parte aquí). Función aparte de
+ * `evaluacionAvanzadaCompleta` porque en la RPC también es una
+ * precondición aparte (bloque `IF` propio), no parte del mismo chequeo.
+ */
+type VisitaDomiciliaria = {
+  visita_domiciliaria_realizada: boolean | null
+  visita_domiciliaria_calificacion: string | null
+}
+
+export function visitaDomiciliariaCompleta(evaluacionRaw: VisitaDomiciliaria | VisitaDomiciliaria[] | null | undefined): boolean {
+  const evaluacion = Array.isArray(evaluacionRaw) ? evaluacionRaw[0] : evaluacionRaw
+  if (!evaluacion) return false
+  if (evaluacion.visita_domiciliaria_realizada !== true) return false
+  if (!evaluacion.visita_domiciliaria_calificacion) return false
   return true
 }

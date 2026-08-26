@@ -623,6 +623,17 @@ export async function saveCandidatoEvaluacion(candidatoId: string, data: any) {
     cantidad_hermanos: data.cantidad_hermanos ? parseInt(data.cantidad_hermanos) : null,
     personas_dependientes: data.personas_dependientes ? parseInt(data.personas_dependientes) : null,
     descripcion_responsabilidades: data.descripcion_responsabilidades || null,
+    // Fase 19 (2026-08-25): calificación de la visita domiciliaria.
+    // visita_domiciliaria_realizada solo puede ser true/false explícito
+    // (nunca 'null' string) -- si viene vacío, se guarda NULL (aún no
+    // respondida). Si no está realizada, la calificación/observaciones
+    // se limpian a NULL aunque el formulario mandara algo residual (no
+    // debería, pero es una garantía barata del lado del servidor).
+    visita_domiciliaria_realizada: data.visita_domiciliaria_realizada === 'true' ? true : data.visita_domiciliaria_realizada === 'false' ? false : null,
+    visita_domiciliaria_calificacion: data.visita_domiciliaria_realizada === 'true' ? (data.visita_domiciliaria_calificacion || null) : null,
+    visita_domiciliaria_observaciones: data.visita_domiciliaria_realizada === 'true' && data.visita_domiciliaria_calificacion === 'APTO_CON_RESERVA' ? (data.visita_domiciliaria_observaciones || null) : null,
+    visita_domiciliaria_verificado_por: data.visita_domiciliaria_realizada === 'true' ? session.user.id : null,
+    visita_domiciliaria_verificado_en: data.visita_domiciliaria_realizada === 'true' ? new Date().toISOString() : null,
     updated_at: new Date().toISOString()
   }
 
@@ -645,7 +656,76 @@ export async function saveCandidatoEvaluacion(candidatoId: string, data: any) {
 
   revalidatePath('/admin/candidatos')
   revalidatePath(`/admin/candidatos/${candidatoId}`)
-  
+
+  return { success: true }
+}
+
+/**
+ * Server Action para la verificación manual de la licencia de conducción
+ * (Fase 19, 2026-08-25). Es informativa/de apoyo a la decisión humana --
+ * a diferencia de licencia_declarada_vigente (lo que el candidato dijo en
+ * /apply), esta es la confirmación real del equipo de RRHH. No dispara
+ * ningún descarte automático por sí sola.
+ */
+export async function saveLicenciaVerificacion(candidatoId: string, verificada: boolean | null) {
+  const supabase = await createClient()
+
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase
+    .from('candidatos')
+    .update({
+      licencia_verificada_admin: verificada,
+      licencia_verificada_por: verificada !== null ? session.user.id : null,
+      licencia_verificada_en: verificada !== null ? new Date().toISOString() : null
+    })
+    .eq('id', candidatoId)
+
+  if (error) {
+    console.error('Error guardando verificación de licencia:', error)
+    return { success: false, error: 'Error interno de base de datos' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  return { success: true }
+}
+
+/**
+ * Server Action para la verificación manual de antecedentes judiciales
+ * (Fase 19, 2026-08-25): Judiciales / Procuraduría / Contraloría, cada
+ * uno Cumple/No Cumple. Igual que la licencia, es informativa -- apoya la
+ * decisión de descarte manual del equipo de RRHH, no la dispara sola.
+ */
+export async function saveAntecedentesJudiciales(candidatoId: string, data: {
+  judiciales: 'CUMPLE' | 'NO_CUMPLE' | null
+  procuraduria: 'CUMPLE' | 'NO_CUMPLE' | null
+  contraloria: 'CUMPLE' | 'NO_CUMPLE' | null
+}) {
+  const supabase = await createClient()
+
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const algunaRespuesta = data.judiciales !== null || data.procuraduria !== null || data.contraloria !== null
+
+  const { error } = await supabase
+    .from('candidatos')
+    .update({
+      antecedentes_judiciales_estado: data.judiciales,
+      antecedentes_procuraduria_estado: data.procuraduria,
+      antecedentes_contraloria_estado: data.contraloria,
+      antecedentes_verificado_por: algunaRespuesta ? session.user.id : null,
+      antecedentes_verificado_en: algunaRespuesta ? new Date().toISOString() : null
+    })
+    .eq('id', candidatoId)
+
+  if (error) {
+    console.error('Error guardando antecedentes judiciales:', error)
+    return { success: false, error: 'Error interno de base de datos' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
   return { success: true }
 }
 

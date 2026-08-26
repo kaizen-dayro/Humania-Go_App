@@ -204,7 +204,7 @@ export default async function Home() {
                 </p>
                 <div className="space-y-4 text-sm text-white/60">
                   <p className="flex items-center gap-3"><span className="w-1.5 h-1.5 bg-humania-sand rounded-full"></span> Licencia vigente exigida</p>
-                  <p className="flex items-center gap-3"><span className="w-1.5 h-1.5 bg-humania-sand rounded-full"></span> Máximo 3 comparendos</p>
+                  <p className="flex items-center gap-3"><span className="w-1.5 h-1.5 bg-humania-sand rounded-full"></span> Evaluación de Comparendos</p>
                   <p className="flex items-center gap-3"><span className="w-1.5 h-1.5 bg-humania-sand rounded-full"></span> Fiador solidario requerido</p>
                 </div>
               </div>

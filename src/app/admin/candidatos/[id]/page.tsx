@@ -2,10 +2,12 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/server'
 import { Button } from '@/components/ui/button'
-import { evaluateCandidateRequirements, evaluacionAvanzadaCompleta } from '@/lib/domain/eligibility'
+import { evaluateCandidateRequirements, evaluacionAvanzadaCompleta, visitaDomiciliariaCompleta } from '@/lib/domain/eligibility'
 import { CheckCircle2, XCircle, AlertTriangle, HelpCircle } from 'lucide-react'
 import { CandidateActions } from './CandidateActions'
 import { EvaluacionForm } from './EvaluacionForm'
+import { LicenciaVerificacionForm } from './LicenciaVerificacionForm'
+import { AntecedentesJudicialesForm } from './AntecedentesJudicialesForm'
 import { ContractStatusForm } from './ContractStatusForm'
 import { ReferenciaLaboralSection, type ReferenciaLaboralRow } from './ReferenciaLaboralSection'
 import { CollapsibleCard } from './CollapsibleCard'
@@ -141,6 +143,7 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
               currentState={candidato.estado}
               evaluacionCompleta={evaluacionAvanzadaCompleta(candidato.candidatos_evaluacion)}
               referenciaLaboralCompleta={referenciaLaboral?.estado === 'COMPLETADA'}
+              visitaDomiciliariaCompleta={visitaDomiciliariaCompleta(candidato.candidatos_evaluacion)}
               puedeDesistirDesdeSeleccionado={!candidato.estatus_contractual}
             />
           </div>
@@ -288,6 +291,20 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
               <p className="text-sm text-neutral-500 font-medium">Postulación anterior a esta validación — sin consulta SIMIT registrada.</p>
             )}
           </div>
+
+          {candidato.estado === 'REVISION_PRELIMINAR' && (
+            <>
+              <LicenciaVerificacionForm candidatoId={candidato.id} initial={candidato.licencia_verificada_admin} />
+              <AntecedentesJudicialesForm
+                candidatoId={candidato.id}
+                initial={{
+                  judiciales: candidato.antecedentes_judiciales_estado,
+                  procuraduria: candidato.antecedentes_procuraduria_estado,
+                  contraloria: candidato.antecedentes_contraloria_estado,
+                }}
+              />
+            </>
+          )}
 
           <div className="bg-white border border-neutral-200 p-8 mb-6 rounded-lg shadow-sm">
              <h3 className="text-sm font-bold text-humania-gray/50 border-b border-neutral-100 pb-3 mb-6 tracking-widest">FIADOR SOLIDARIO</h3>

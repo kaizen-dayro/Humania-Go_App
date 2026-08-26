@@ -10,12 +10,14 @@ export function CandidateActions({
   currentState,
   evaluacionCompleta,
   referenciaLaboralCompleta,
+  visitaDomiciliariaCompleta,
   puedeDesistirDesdeSeleccionado = false,
 }: {
   candidatoId: string
   currentState: string
   evaluacionCompleta: boolean
   referenciaLaboralCompleta: boolean
+  visitaDomiciliariaCompleta: boolean
   puedeDesistirDesdeSeleccionado?: boolean
 }) {
   const [loading, setLoading] = useState(false)
@@ -28,6 +30,10 @@ export function CandidateActions({
     }
     if (newState === 'SELECCIONADO' && !referenciaLaboralCompleta) {
       alert('No puedes seleccionar este candidato todavía.\n\nLa Referencia Laboral debe estar completa antes de avanzar a la etapa de selección.')
+      return
+    }
+    if (newState === 'SELECCIONADO' && !visitaDomiciliariaCompleta) {
+      alert('No puedes seleccionar este candidato todavía.\n\nLa visita domiciliaria debe estar realizada y calificada antes de avanzar a la etapa de selección.')
       return
     }
     setPendingAction({ newState, description })

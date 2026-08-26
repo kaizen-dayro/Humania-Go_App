@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/server'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 import { CandidateActions } from '../[id]/CandidateActions'
-import { evaluacionAvanzadaCompleta } from '@/lib/domain/eligibility'
+import { evaluacionAvanzadaCompleta, visitaDomiciliariaCompleta } from '@/lib/domain/eligibility'
 
 export default async function CompararCandidatosPage({ searchParams }: { searchParams: Promise<{ id?: string | string[] }> }) {
   const resolvedParams = await searchParams
@@ -171,6 +171,7 @@ export default async function CompararCandidatosPage({ searchParams }: { searchP
                     currentState={c.estado}
                     evaluacionCompleta={evaluacionAvanzadaCompleta(c.candidatos_evaluacion)}
                     referenciaLaboralCompleta={referenciaLaboralCompletaPorCandidato.get(c.id) || false}
+                    visitaDomiciliariaCompleta={visitaDomiciliariaCompleta(c.candidatos_evaluacion)}
                   />
                 </div>
               </div>

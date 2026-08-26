@@ -13,6 +13,7 @@ import { AlertCircle } from 'lucide-react'
 import {
   GENEROS, ApplicationPayload,
   PLATAFORMA_OPTIONS, CATEGORIA_ACTIVIDAD_OPTIONS, PARENTESCO_FAMILIAR_OPTIONS, RELACION_PERSONAL_OPTIONS, TIEMPO_CONOCERSE_OPTIONS, INGRESOS_OPTIONS,
+  SIMIT_MAX_FINES_REQUIRING_VALIDATION,
 } from '@/lib/domain/eligibility'
 import { capitalizarPalabras, PHONE_CO } from '@/lib/validation'
 
@@ -84,6 +85,7 @@ function ApplyForm() {
     plataformas: [] as string[], plataformas_otro: false, plataformas_otro_texto: '',
     categoria_actividad_seleccion: '', categoria_actividad: '', anos_experiencia_declarados: '',
     licencia_declarada_vigente: false, licencia_categorias: [] as string[], cantidad_comparendos_declarados: '',
+    paz_y_salvo_declarado: '' as '' | 'SI' | 'NO', acuerdo_pago_declarado: '' as '' | 'SI' | 'NO',
     fiador_nombre: '', fiador_documento: '', fiador_telefono: '',
     fiador_ingresos: '', fiador_finca_raiz: false,
     ref1_nombre: '', ref1_relacion_seleccion: '', ref1_relacion: '', ref1_telefono: '', ref1_tiempo: '', ref1_ocupacion_seleccion: '', ref1_ocupacion: '',
@@ -160,9 +162,22 @@ function ApplyForm() {
       // Cambiar de ciudad limpia el municipio seleccionado (no puede
       // quedar un municipio de la ciudad anterior).
       setFormData(prev => ({ ...prev, ciudad_operacion_id: value, municipio_operacion_id: '' }))
+    } else if (name === 'cantidad_comparendos_declarados') {
+      // Si el nuevo valor sale del rango que requiere paz y salvo/acuerdo de
+      // pago (1 a SIMIT_MAX_FINES_REQUIRING_VALIDATION), se limpian las
+      // respuestas ya dadas -- evita enviar una respuesta "vieja" que ya no
+      // corresponde a la cantidad actual.
+      if (!NumbersOnly.test(value)) return;
+      const n = parseInt(value)
+      const enRango = !isNaN(n) && n >= 1 && n <= SIMIT_MAX_FINES_REQUIRING_VALIDATION
+      setFormData(prev => ({
+        ...prev,
+        cantidad_comparendos_declarados: value,
+        ...(enRango ? {} : { paz_y_salvo_declarado: '', acuerdo_pago_declarado: '' })
+      }))
     } else {
       // Filtros estrictos de input
-      if (['edad', 'numero_documento', 'telefono', 'fiador_documento', 'fiador_telefono', 'ref1_telefono', 'ref2_telefono', 'anos_experiencia_declarados', 'cantidad_comparendos_declarados'].includes(name)) {
+      if (['edad', 'numero_documento', 'telefono', 'fiador_documento', 'fiador_telefono', 'ref1_telefono', 'ref2_telefono', 'anos_experiencia_declarados'].includes(name)) {
         if (!NumbersOnly.test(value)) return;
       }
       let finalValue = value
@@ -253,6 +268,12 @@ function ApplyForm() {
       const comp = parseInt(formData.cantidad_comparendos_declarados)
       if (isNaN(comp) || comp < 0 || comp > 10) {
         newErrors.cantidad_comparendos_declarados = "Debe ser un número entre 0 y 10."
+      } else if (comp >= 1 && comp <= SIMIT_MAX_FINES_REQUIRING_VALIDATION) {
+        if (formData.paz_y_salvo_declarado !== 'SI' && formData.paz_y_salvo_declarado !== 'NO') {
+          newErrors.paz_y_salvo_declarado = "Selecciona una opción."
+        } else if (formData.paz_y_salvo_declarado === 'NO' && formData.acuerdo_pago_declarado !== 'SI' && formData.acuerdo_pago_declarado !== 'NO') {
+          newErrors.acuerdo_pago_declarado = "Selecciona una opción."
+        }
       }
     }
 
@@ -347,6 +368,8 @@ function ApplyForm() {
         licencia_declarada_vigente: formData.licencia_declarada_vigente,
         licencia_categorias: formData.licencia_categorias,
         cantidad_comparendos_declarados: parseInt(formData.cantidad_comparendos_declarados) || 0,
+        paz_y_salvo_declarado: formData.paz_y_salvo_declarado === '' ? null : formData.paz_y_salvo_declarado === 'SI',
+        acuerdo_pago_declarado: formData.acuerdo_pago_declarado === '' ? null : formData.acuerdo_pago_declarado === 'SI',
         fiador: {
           nombre_completo: formData.fiador_nombre,
           numero_documento: formData.fiador_documento,
@@ -767,9 +790,58 @@ function ApplyForm() {
                 <div className="space-y-3">
                   <Label className="text-humania-gray font-medium">¿Cuántos comparendos estimas tener pendientes?</Label>
                   <Input name="cantidad_comparendos_declarados" maxLength={2} value={formData.cantidad_comparendos_declarados} onChange={handleChange} placeholder="Ej. 2" className={inputClass('cantidad_comparendos_declarados')} />
-                  <p className="text-xs text-humania-gray/70 font-medium mt-1">La cantidad de comparendos vigentes será tenida en cuenta durante el proceso de selección. Las postulaciones con más de 3 comparendos pueden no ser elegibles.</p>
+                  <p className="text-xs text-humania-gray/70 font-medium mt-1">La cantidad de comparendos vigentes será tenida en cuenta durante el proceso de selección. Si tienes comparendos pendientes, es posible que debas responder preguntas adicionales para validar tu situación.</p>
                   <ErrorMsg name="cantidad_comparendos_declarados" errors={errors} />
                 </div>
+
+                {(() => {
+                  const comp = parseInt(formData.cantidad_comparendos_declarados)
+                  const requierePazYSalvo = !isNaN(comp) && comp >= 1 && comp <= SIMIT_MAX_FINES_REQUIRING_VALIDATION
+                  if (!requierePazYSalvo) return null
+                  return (
+                    <div className="p-6 bg-white border border-neutral-200 animate-in fade-in slide-in-from-top-2 rounded-lg shadow-sm space-y-6">
+                      <div className="space-y-3">
+                        <Label className="text-humania-blue font-semibold text-base block">¿Tienes paz y salvo?</Label>
+                        <RadioGroup
+                          value={formData.paz_y_salvo_declarado}
+                          onValueChange={(val) => setFormData(prev => ({ ...prev, paz_y_salvo_declarado: val as 'SI' | 'NO', acuerdo_pago_declarado: val === 'SI' ? '' : prev.acuerdo_pago_declarado }))}
+                          className="flex gap-4"
+                        >
+                          <div className="flex items-center space-x-2 bg-neutral-50 border border-neutral-200 px-5 py-3 hover:border-humania-blue transition-colors cursor-pointer rounded-lg">
+                            <RadioGroupItem value="SI" id="pys-si" className="text-humania-blue w-5 h-5" />
+                            <Label htmlFor="pys-si" className="font-medium cursor-pointer">Sí</Label>
+                          </div>
+                          <div className="flex items-center space-x-2 bg-neutral-50 border border-neutral-200 px-5 py-3 hover:border-humania-blue transition-colors cursor-pointer rounded-lg">
+                            <RadioGroupItem value="NO" id="pys-no" className="text-humania-blue w-5 h-5" />
+                            <Label htmlFor="pys-no" className="font-medium cursor-pointer">No</Label>
+                          </div>
+                        </RadioGroup>
+                        <ErrorMsg name="paz_y_salvo_declarado" errors={errors} />
+                      </div>
+
+                      {formData.paz_y_salvo_declarado === 'NO' && (
+                        <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                          <Label className="text-humania-blue font-semibold text-base block">¿Tienes acuerdo de pago?</Label>
+                          <RadioGroup
+                            value={formData.acuerdo_pago_declarado}
+                            onValueChange={(val) => setFormData(prev => ({ ...prev, acuerdo_pago_declarado: val as 'SI' | 'NO' }))}
+                            className="flex gap-4"
+                          >
+                            <div className="flex items-center space-x-2 bg-neutral-50 border border-neutral-200 px-5 py-3 hover:border-humania-blue transition-colors cursor-pointer rounded-lg">
+                              <RadioGroupItem value="SI" id="ap-si" className="text-humania-blue w-5 h-5" />
+                              <Label htmlFor="ap-si" className="font-medium cursor-pointer">Sí</Label>
+                            </div>
+                            <div className="flex items-center space-x-2 bg-neutral-50 border border-neutral-200 px-5 py-3 hover:border-humania-blue transition-colors cursor-pointer rounded-lg">
+                              <RadioGroupItem value="NO" id="ap-no" className="text-humania-blue w-5 h-5" />
+                              <Label htmlFor="ap-no" className="font-medium cursor-pointer">No</Label>
+                            </div>
+                          </RadioGroup>
+                          <ErrorMsg name="acuerdo_pago_declarado" errors={errors} />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           )}
