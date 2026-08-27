@@ -277,7 +277,8 @@ export function CandidatosTable({
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
+      {/* Escritorio/tablet: tabla completa. Oculta en celular -- ver las tarjetas apiladas debajo. */}
+      <div className="hidden md:block bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
         <Table>
           <TableHeader className="bg-neutral-50/50">
             <TableRow>
@@ -342,6 +343,50 @@ export function CandidatosTable({
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Celular: tarjetas apiladas en vez de la tabla -- misma información, sin scroll horizontal. */}
+      <div className="md:hidden space-y-3">
+        {filteredCandidatos?.map((c) => (
+          <div key={c.id} className="bg-white rounded-lg shadow-sm border border-neutral-200 p-4 space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2 min-w-0">
+                <Checkbox
+                  checked={selectedIds.includes(c.id)}
+                  onCheckedChange={() => toggleSelection(c.id)}
+                  className="mt-0.5 shrink-0"
+                />
+                <div className="min-w-0">
+                  <p className="font-medium text-humania-blue text-sm truncate">{c.nombres} {c.apellidos}</p>
+                  <p className="text-xs text-humania-gray">{c.numero_documento}</p>
+                </div>
+              </div>
+              {getStatusBadge(c.estado, c.estatus_contractual)}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-humania-gray pl-6">
+              <span>{c.tipo_perfil}</span>
+              {c.ciudades_operacion?.nombre_oficial && <span>{c.ciudades_operacion.nombre_oficial}</span>}
+              <span>{new Date(c.created_at).toLocaleDateString()}</span>
+            </div>
+            <div className="pl-6">
+              <Link href={`/admin/candidatos/${c.id}`} className="text-sm font-bold text-humania-blue hover:underline">
+                Ver Detalles
+              </Link>
+            </div>
+          </div>
+        ))}
+
+        {candidatos.length > 0 && filteredCandidatos.length === 0 && (
+          <div className="text-center py-12 text-neutral-500 bg-white rounded-lg border border-neutral-200">
+            No se encontraron candidatos que coincidan con la búsqueda o los filtros aplicados.
+          </div>
+        )}
+
+        {(!candidatos || candidatos.length === 0) && (
+          <div className="text-center py-12 text-neutral-500 bg-white rounded-lg border border-neutral-200">
+            No hay candidatos registrados en esta categoría.
+          </div>
+        )}
       </div>
     </div>
   )

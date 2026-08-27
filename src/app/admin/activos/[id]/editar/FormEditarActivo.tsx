@@ -10,6 +10,31 @@ import { updateAsset } from '../../../actions'
 import { AlertCircle } from 'lucide-react'
 import { FotosActivo, type FotosActivoHandle } from './FotosActivo'
 import { ALPHANUMERIC_NO_SPACES, capitalizarPalabras } from '@/lib/validation'
+import { evaluarVencimiento, diasHastaVencimiento, type EstadoVencimiento } from '@/lib/domain/vencimientosActivos'
+
+// Fase 21 (2026-08-26): alerta sutil de vencimiento -- mismo criterio de
+// colores (OK/PROXIMO/URGENTE/VENCIDO) que la tarjeta del Dashboard, ver
+// web/src/lib/domain/vencimientosActivos.ts.
+const ESTILO_VENCIMIENTO: Record<EstadoVencimiento, { texto: string; clase: string }> = {
+  OK: { texto: 'Vigente', clase: 'text-humania-gray/50' },
+  PROXIMO: { texto: 'Vence pronto', clase: 'text-amber-600' },
+  URGENTE: { texto: 'Vence pronto', clase: 'text-orange-600 font-semibold' },
+  VENCIDO: { texto: 'Vencido', clase: 'text-red-600 font-semibold' },
+  SIN_REGISTRAR: { texto: '', clase: '' },
+}
+
+function VencimientoBadge({ fecha }: { fecha: string | null | undefined }) {
+  const estado = evaluarVencimiento(fecha)
+  if (estado === 'OK' || estado === 'SIN_REGISTRAR') return null
+  const dias = diasHastaVencimiento(fecha as string)
+  const { texto, clase } = ESTILO_VENCIMIENTO[estado]
+  const detalle = dias < 0 ? `hace ${Math.abs(dias)} día(s)` : dias === 0 ? 'hoy' : `en ${dias} día(s)`
+  return (
+    <p className={`text-xs mt-1 ${clase}`}>
+      {texto} — {detalle}
+    </p>
+  )
+}
 
 const CAMPOS_CONFIRMABLES: { key: string; label: string }[] = [
   { key: 'placa', label: 'Placa' },
@@ -129,10 +154,11 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
 
   // ================= MODO SOLO LECTURA (ASIGNADO / TRANSFERIDO) =================
   if (soloLectura) {
-    const Row = ({ label, value }: { label: string; value: string | null | undefined }) => (
+    const Row = ({ label, value, vencimiento }: { label: string; value: string | null | undefined; vencimiento?: boolean }) => (
       <div className="space-y-1">
         <p className="text-xs font-bold text-humania-gray/50 uppercase tracking-widest">{label}</p>
         <p className="text-sm font-medium text-humania-blue">{value || '—'}</p>
+        {vencimiento && <VencimientoBadge fecha={value} />}
       </div>
     )
 
@@ -165,9 +191,9 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
           <Row label="Estado de Operación" value={activo.estado} />
           <Row label="Placa" value={activo.placa} />
           <Row label="Color" value={activo.color} />
-          <Row label="Vencimiento Tecnomecánica" value={activo.vencimiento_tecnomecanica} />
-          <Row label="Vencimiento SOAT" value={activo.vencimiento_soat} />
-          <Row label="Vencimiento Impuestos" value={activo.vencimiento_impuestos} />
+          <Row label="Vencimiento Tecnomecánica" value={activo.vencimiento_tecnomecanica} vencimiento />
+          <Row label="Vencimiento SOAT" value={activo.vencimiento_soat} vencimiento />
+          <Row label="Vencimiento Impuestos" value={activo.vencimiento_impuestos} vencimiento />
         </div>
 
         <div className="space-y-1">
@@ -249,14 +275,17 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
         <div className="space-y-2">
           <Label className="text-humania-gray font-medium">Vencimiento Tecnomecánica</Label>
           <Input type="date" name="vencimiento_tecnomecanica" value={formValues.vencimiento_tecnomecanica} onChange={handleChange} className="rounded-none border-neutral-300 h-12" />
+          <VencimientoBadge fecha={formValues.vencimiento_tecnomecanica} />
         </div>
         <div className="space-y-2">
           <Label className="text-humania-gray font-medium">Vencimiento SOAT</Label>
           <Input type="date" name="vencimiento_soat" value={formValues.vencimiento_soat} onChange={handleChange} className="rounded-none border-neutral-300 h-12" />
+          <VencimientoBadge fecha={formValues.vencimiento_soat} />
         </div>
         <div className="space-y-2">
           <Label className="text-humania-gray font-medium">Vencimiento Impuestos</Label>
           <Input type="date" name="vencimiento_impuestos" value={formValues.vencimiento_impuestos} onChange={handleChange} className="rounded-none border-neutral-300 h-12" />
+          <VencimientoBadge fecha={formValues.vencimiento_impuestos} />
         </div>
       </div>
 
