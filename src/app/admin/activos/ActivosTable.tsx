@@ -14,6 +14,51 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { AlertTriangle } from "lucide-react"
+import { construirDocumentos, peorEstado, evaluarVencimiento, diasHastaVencimiento } from '@/lib/domain/vencimientosActivos'
+
+// Fase 21 (2026-08-26): texto sutil de alerta cuando algún documento del
+// activo (Tecnomecánica/SOAT/Impuestos) está próximo a vencer o ya
+// venció -- para reconocer cuáles activos requieren atención sin tener
+// que abrir cada uno. Mismo criterio de umbrales (30/15/0 días) que la
+// alerta del detalle del activo y el cron de notificaciones, ver
+// web/src/lib/domain/vencimientosActivos.ts.
+const COLOR_ALERTA: Record<string, string> = {
+  PROXIMO: 'text-amber-600',
+  URGENTE: 'text-orange-600',
+  VENCIDO: 'text-red-600',
+}
+
+type ActivoVencimientos = {
+  vencimiento_tecnomecanica: string | null
+  vencimiento_soat: string | null
+  vencimiento_impuestos: string | null
+}
+
+function AlertaDocumentos({ activo }: { activo: ActivoVencimientos }) {
+  const documentos = construirDocumentos(activo).filter(d => d.fecha)
+  const conProblema = documentos
+    .map(d => ({ ...d, estado: evaluarVencimiento(d.fecha) }))
+    .filter(d => d.estado === 'PROXIMO' || d.estado === 'URGENTE' || d.estado === 'VENCIDO')
+
+  if (conProblema.length === 0) return null
+
+  const peor = peorEstado(conProblema.map(d => d.estado))
+  const detalle = conProblema
+    .map(d => {
+      const dias = diasHastaVencimiento(d.fecha as string)
+      const cuando = dias < 0 ? `vencido hace ${Math.abs(dias)} día(s)` : dias === 0 ? 'vence hoy' : `vence en ${dias} día(s)`
+      return `${d.label}: ${cuando}`
+    })
+    .join(' — ')
+
+  return (
+    <div className={`flex items-center gap-1 text-xs font-semibold mt-1 ${COLOR_ALERTA[peor] || 'text-amber-600'}`} title={detalle}>
+      <AlertTriangle className="w-3 h-3 shrink-0" />
+      <span className="truncate">{conProblema.map(d => d.label).join(', ')}</span>
+    </div>
+  )
+}
 
 const ESTADOS: Record<string, string> = {
   DISPONIBLE: 'Disponible',
@@ -126,7 +171,8 @@ export function ActivosTable({ activos }: { activos: any[] }) {
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
+      {/* Escritorio/tablet: tabla completa. Oculta en celular -- ver las tarjetas apiladas debajo. */}
+      <div className="hidden md:block bg-white rounded-lg shadow-sm border border-neutral-200 overflow-hidden">
         <Table>
           <TableHeader className="bg-neutral-50/50">
             <TableRow>
@@ -167,6 +213,7 @@ export function ActivosTable({ activos }: { activos: any[] }) {
                   </TableCell>
                   <TableCell>
                     {getStatusBadge(activo.estado)}
+                    <AlertaDocumentos activo={activo} />
                   </TableCell>
                   <TableCell className="text-right">
                     {activo.estado === 'TRANSFERIDO' ? null : (
@@ -198,6 +245,54 @@ export function ActivosTable({ activos }: { activos: any[] }) {
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Celular: tarjetas apiladas en vez de la tabla -- misma información, sin scroll horizontal. */}
+      <div className="md:hidden space-y-3">
+        {filteredActivos.map((activo) => {
+          const modelo = activo.modelos_vehiculo
+          return (
+            <div key={activo.id} className="bg-white rounded-lg shadow-sm border border-neutral-200 p-4 flex gap-3">
+              <div className="w-16 h-16 bg-neutral-100 rounded flex items-center justify-center overflow-hidden shrink-0">
+                {activo.imagenResuelta ? (
+                  <img src={activo.imagenResuelta} alt="Activo" className="w-full h-full object-cover mix-blend-multiply" />
+                ) : (
+                  <span className="text-[9px] text-neutral-400 font-medium uppercase text-center">Sin Img</span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-bold text-humania-blue text-sm">{activo.codigo_interno}</p>
+                    <p className="font-medium text-humania-blue text-sm truncate">{modelo?.marcas_vehiculo?.nombre} {modelo?.nombre}</p>
+                  </div>
+                  {getStatusBadge(activo.estado)}
+                </div>
+                <p className="text-xs text-humania-gray">{modelo?.tipos_vehiculo?.nombre}</p>
+                <AlertaDocumentos activo={activo} />
+                {activo.estado !== 'TRANSFERIDO' && (
+                  <Link href={`/admin/activos/${activo.id}/editar`} className="inline-block mt-2">
+                    <Button variant="outline" size="sm" className="rounded-sm">
+                      {activo.estado === 'ASIGNADO' ? 'Ver Detalle' : 'Editar Estado'}
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </div>
+          )
+        })}
+
+        {activos.length > 0 && filteredActivos.length === 0 && (
+          <div className="text-center py-12 text-neutral-500 bg-white rounded-lg border border-neutral-200">
+            No se encontraron activos que coincidan con la búsqueda o los filtros aplicados.
+          </div>
+        )}
+
+        {(!activos || activos.length === 0) && (
+          <div className="text-center py-12 text-neutral-500 bg-white rounded-lg border border-neutral-200">
+            No hay activos registrados.
+          </div>
+        )}
       </div>
     </div>
   )

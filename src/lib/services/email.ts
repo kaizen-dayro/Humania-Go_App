@@ -23,6 +23,56 @@ interface SendEmailOptions {
   eventType: EmailEventType;
 }
 
+/**
+ * Envío real vía nodemailer, sin ninguna lógica de idempotencia ni de
+ * candidato -- extraído aquí (Fase 21) para que sendCandidateEmail y
+ * sendAdminEmail compartan exactamente la misma configuración de
+ * transporte, sin duplicarla.
+ */
+async function enviarCorreoReal(to: string, subject: string, html: string): Promise<{ status: 'SENT' | 'FAILED', providerMessageId: string | null, errorMessage: string | null }> {
+  try {
+    const user = process.env.EMAIL_USER;
+    const pass = process.env.EMAIL_APP_PASSWORD;
+    const from = process.env.EMAIL_FROM || user;
+
+    if (!user || !pass) {
+      throw new Error("Credenciales de correo (EMAIL_USER o EMAIL_APP_PASSWORD) no están configuradas.");
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user,
+        pass,
+      },
+    });
+
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject,
+      html,
+    });
+
+    return { status: 'SENT', providerMessageId: info.messageId, errorMessage: null };
+  } catch (error: any) {
+    console.error(`[EMAIL ERROR] Falló el envío de correo a ${to}:`, error.message);
+    return { status: 'FAILED', providerMessageId: null, errorMessage: error.message };
+  }
+}
+
+/**
+ * Correo a un administrador (Fase 21, 2026-08-26): sin idempotencia vía
+ * `candidate_email_events` (esa tabla es de candidatos, no de admins) --
+ * quien llama a esta función es responsable de su propia idempotencia si
+ * la necesita (ver el cron de vencimiento de documentos, que la resuelve
+ * con `activo_documento_notificaciones`).
+ */
+export async function sendAdminEmail(to: string, subject: string, html: string): Promise<boolean> {
+  const { status } = await enviarCorreoReal(to, subject, html);
+  return status === 'SENT';
+}
+
 export async function sendCandidateEmail({ candidateId, to, subject, html, eventType }: SendEmailOptions) {
   let intentId: string | null = null;
 
@@ -48,41 +98,7 @@ export async function sendCandidateEmail({ candidateId, to, subject, html, event
     intentId = intentData?.id ?? null;
   }
 
-  let status: 'SENT' | 'FAILED' = 'FAILED';
-  let errorMessage: string | null = null;
-  let providerMessageId: string | null = null;
-
-  try {
-    const user = process.env.EMAIL_USER;
-    const pass = process.env.EMAIL_APP_PASSWORD;
-    const from = process.env.EMAIL_FROM || user;
-
-    if (!user || !pass) {
-      throw new Error("Credenciales de correo (EMAIL_USER o EMAIL_APP_PASSWORD) no están configuradas.");
-    }
-
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user,
-        pass,
-      },
-    });
-
-    const info = await transporter.sendMail({
-      from,
-      to,
-      subject,
-      html,
-    });
-
-    status = 'SENT';
-    providerMessageId = info.messageId;
-
-  } catch (error: any) {
-    console.error(`[EMAIL ERROR] Falló el envío de correo (${eventType}) a ${to}:`, error.message);
-    errorMessage = error.message;
-  }
+  const { status, providerMessageId, errorMessage } = await enviarCorreoReal(to, subject, html);
 
   // 2. Actualizar el registro con el resultado real
   if (intentId) {

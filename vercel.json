@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/cron/mantenimiento-descartes",
+      "path": "/api/cron/mantenimiento-diario",
       "schedule": "0 13 * * *"
     }
   ]
