@@ -1,0 +1,45 @@
+name: CI
+
+# Corre en cada Pull Request contra main (bloquea el merge si falla, una
+# vez activada la proteccion de rama en GitHub) y en cada push directo a
+# main (deja registro de que la propia main sigue compilando, aunque en
+# el flujo normal nunca deberia recibir push directo despues de esta
+# fase). No corre migraciones de Supabase ni ningun SQL -- eso sigue
+# siendo 100% manual, ejecutado por el dueño del proyecto en el panel de
+# Supabase (regla no negociable del proyecto).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build-and-lint:
+    name: Lint y build (incluye chequeo de TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (incluye tsc)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
