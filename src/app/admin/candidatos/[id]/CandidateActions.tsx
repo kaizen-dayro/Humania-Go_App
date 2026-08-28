@@ -11,6 +11,7 @@ export function CandidateActions({
   evaluacionCompleta,
   referenciaLaboralCompleta,
   visitaDomiciliariaCompleta,
+  visitaDomiciliariaNoApta,
   puedeDesistirDesdeSeleccionado = false,
 }: {
   candidatoId: string
@@ -18,6 +19,7 @@ export function CandidateActions({
   evaluacionCompleta: boolean
   referenciaLaboralCompleta: boolean
   visitaDomiciliariaCompleta: boolean
+  visitaDomiciliariaNoApta: boolean
   puedeDesistirDesdeSeleccionado?: boolean
 }) {
   const [loading, setLoading] = useState(false)
@@ -30,6 +32,10 @@ export function CandidateActions({
     }
     if (newState === 'SELECCIONADO' && !referenciaLaboralCompleta) {
       alert('No puedes seleccionar este candidato todavía.\n\nLa Referencia Laboral debe estar completa antes de avanzar a la etapa de selección.')
+      return
+    }
+    if (newState === 'SELECCIONADO' && visitaDomiciliariaNoApta) {
+      alert('No puedes seleccionar a este candidato: la visita domiciliaria lo calificó como No Apto.')
       return
     }
     if (newState === 'SELECCIONADO' && !visitaDomiciliariaCompleta) {

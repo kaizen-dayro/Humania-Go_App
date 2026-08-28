@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/server'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 import { CandidateActions } from '../[id]/CandidateActions'
-import { evaluacionAvanzadaCompleta, visitaDomiciliariaCompleta } from '@/lib/domain/eligibility'
+import { evaluacionAvanzadaCompleta, visitaDomiciliariaCompleta, visitaDomiciliariaEsNoApta } from '@/lib/domain/eligibility'
 
 export default async function CompararCandidatosPage({ searchParams }: { searchParams: Promise<{ id?: string | string[] }> }) {
   const resolvedParams = await searchParams
@@ -106,7 +106,7 @@ export default async function CompararCandidatosPage({ searchParams }: { searchP
                     <ul className="space-y-3 text-sm">
                       <li>
                         <span className="font-semibold text-humania-gray block mb-1">Experiencia declarada:</span>
-                        {c.anos_experiencia_declarados} años
+                        {c.anos_experiencia_declarados}
                       </li>
                       <li>
                         <span className="font-semibold text-humania-gray block mb-1">Licencia:</span>
@@ -172,6 +172,7 @@ export default async function CompararCandidatosPage({ searchParams }: { searchP
                     evaluacionCompleta={evaluacionAvanzadaCompleta(c.candidatos_evaluacion)}
                     referenciaLaboralCompleta={referenciaLaboralCompletaPorCandidato.get(c.id) || false}
                     visitaDomiciliariaCompleta={visitaDomiciliariaCompleta(c.candidatos_evaluacion)}
+                    visitaDomiciliariaNoApta={visitaDomiciliariaEsNoApta(c.candidatos_evaluacion)}
                   />
                 </div>
               </div>

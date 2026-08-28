@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ReferenciaLaboralScore } from './ReferenciaLaboralScore'
 import { CollapsibleCard } from './CollapsibleCard'
+import { REFERENCIA_LABORAL_RELACION_OPTIONS } from '@/lib/domain/eligibility'
 
 export type ReferenciaLaboralRow = {
   id: string
@@ -84,7 +85,7 @@ export const EVALUACION_FILAS: { key: EvaluacionKey; titulo: string; pregunta: s
 
 export const CONFIANZA_OPCIONES = ['Sí, sin ninguna reserva', 'Sí, con algunas condiciones', 'No']
 export const RECONTRATACION_OPCIONES = ['Sí, sin duda', 'Sí, dependiendo de las condiciones', 'No']
-export const RELACION_OPCIONES = ['Jefe directo', 'Jefe anterior', 'Recursos Humanos', 'Compañero de trabajo', 'Cliente', 'Proveedor', 'Otro']
+export const RELACION_OPCIONES = REFERENCIA_LABORAL_RELACION_OPTIONS
 
 const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
   PENDIENTE: { label: 'Pendiente', className: 'text-neutral-500' },
@@ -110,7 +111,12 @@ export function ReferenciaLaboralSection({
   candidatoEstado: string
   initialData: ReferenciaLaboralRow | null
 }) {
-  const puedeCrearOContinuar = candidatoEstado === 'ENTREVISTA'
+  // KAI-20 (2026-08-28): también disponible en REVISION_PRELIMINAR --
+  // ahora el propio candidato diligencia la Sección 1 desde
+  // /apply/parte2 mientras sigue en ese estado, antes de la entrevista
+  // formal en el sistema (ver check_referencia_laboral_edicion_permitida,
+  // migración 00052, autoridad real de esta misma regla).
+  const puedeCrearOContinuar = candidatoEstado === 'ENTREVISTA' || candidatoEstado === 'REVISION_PRELIMINAR'
   const esCompletada = initialData?.estado === 'COMPLETADA'
   const puedeCorregir = esCompletada && candidatoEstado !== 'DESCARTADO'
   const href = `/admin/candidatos/${candidatoId}/referencia-laboral`
@@ -130,7 +136,7 @@ export function ReferenciaLaboralSection({
               Referencia Laboral
             </Link>
           ) : (
-            <p className="text-sm text-neutral-400">No registrada (disponible únicamente mientras el candidato está en estado ENTREVISTA).</p>
+            <p className="text-sm text-neutral-400">No registrada (disponible mientras el candidato está en estado REVISION_PRELIMINAR o ENTREVISTA).</p>
           )}
         </div>
       )}
@@ -144,7 +150,7 @@ export function ReferenciaLaboralSection({
             </Link>
           ) : (
             <p className="text-sm text-neutral-400">
-              El candidato ya no está en estado ENTREVISTA; esta referencia quedó en progreso y no puede continuarse desde aquí.
+              El candidato ya no está en estado REVISION_PRELIMINAR ni ENTREVISTA; esta referencia quedó en progreso y no puede continuarse desde aquí.
             </p>
           )}
         </div>

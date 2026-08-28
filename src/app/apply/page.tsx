@@ -8,14 +8,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AlertCircle } from 'lucide-react'
 import {
   GENEROS, ApplicationPayload,
-  PLATAFORMA_OPTIONS, CATEGORIA_ACTIVIDAD_OPTIONS, PARENTESCO_FAMILIAR_OPTIONS, RELACION_PERSONAL_OPTIONS, TIEMPO_CONOCERSE_OPTIONS, INGRESOS_OPTIONS,
+  PLATAFORMA_OPTIONS, CATEGORIA_ACTIVIDAD_OPTIONS, TIEMPO_EXPERIENCIA_OPTIONS,
   SIMIT_MAX_FINES_REQUIRING_VALIDATION,
 } from '@/lib/domain/eligibility'
 import { capitalizarPalabras, PHONE_CO } from '@/lib/validation'
+import { ErrorMsg, inputClass } from './_shared/ErrorMsg'
+import { TratamientoDatosStep, TratamientoDatosState } from './_shared/TratamientoDatosStep'
 
 type Oportunidad = {
   id: string; codigo_interno: string; tipo: string; marca: string; modelo: string; imagen: string;
@@ -32,19 +33,9 @@ const LICENCIA_CATEGORIAS = ['A1', 'A2', 'B1', 'B2', 'B3', 'C1', 'C2', 'C3'];
 // Mismos campos filtrados con LettersOnly: nombres/textos humanos que
 // tambien se normalizan en Postgres (Fase 10) al guardar. Se capitalizan
 // en vivo aqui para que la persona vea el mismo resultado mientras escribe.
-const CAMPOS_NOMBRE_HUMANO = ['nombres', 'apellidos', 'barrio', 'categoria_actividad', 'plataformas_otro_texto', 'fiador_nombre', 'ref1_nombre', 'ref1_relacion', 'ref1_ocupacion', 'ref2_nombre', 'ref2_relacion', 'ref2_ocupacion'];
+const CAMPOS_NOMBRE_HUMANO = ['nombres', 'apellidos', 'barrio', 'categoria_actividad', 'plataformas_otro_texto'];
 
-// Definido fuera de ApplyForm (no en cada render) para evitar recrear
-// el componente en cada renderizado.
-function ErrorMsg({ name, errors }: { name: string; errors: Record<string, string> }) {
-  if (!errors[name]) return null
-  return (
-    <p className="flex items-center gap-1.5 text-red-600 text-sm mt-1.5 font-medium animate-in slide-in-from-top-1">
-      <AlertCircle className="w-4 h-4" />
-      {errors[name]}
-    </p>
-  )
-}
+const TOTAL_PASOS = 5
 
 function ApplyForm() {
   const router = useRouter()
@@ -56,7 +47,7 @@ function ApplyForm() {
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  
+
   const [oportunidades, setOportunidades] = useState<Oportunidad[]>([])
   const [loadingOportunidades, setLoadingOportunidades] = useState(true)
 
@@ -66,13 +57,9 @@ function ApplyForm() {
 
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const [policyVersion, setPolicyVersion] = useState('')
-  const [policyTitle, setPolicyTitle] = useState('')
-  const [policyContent, setPolicyContent] = useState('')
-  const [loadingPolicy, setLoadingPolicy] = useState(true)
-  const [policyModalOpen, setPolicyModalOpen] = useState(false)
-  const [policyReadToEnd, setPolicyReadToEnd] = useState(false)
-  const [dataAuthorization, setDataAuthorization] = useState(false)
+  // Paso 5 (Tratamiento de Datos) -- autocontenido, ver _shared/TratamientoDatosStep.
+  const [tratamientoDatos, setTratamientoDatos] = useState<TratamientoDatosState>({ dataAuthorization: false, policyVersion: '', policyReadToEnd: false })
+  const [tratamientoDatosError, setTratamientoDatosError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
     activo_id: initialActivoId || '',
@@ -86,10 +73,6 @@ function ApplyForm() {
     categoria_actividad_seleccion: '', categoria_actividad: '', anos_experiencia_declarados: '',
     licencia_declarada_vigente: false, licencia_categorias: [] as string[], cantidad_comparendos_declarados: '',
     paz_y_salvo_declarado: '' as '' | 'SI' | 'NO', acuerdo_pago_declarado: '' as '' | 'SI' | 'NO',
-    fiador_nombre: '', fiador_documento: '', fiador_telefono: '',
-    fiador_ingresos: '', fiador_finca_raiz: false,
-    ref1_nombre: '', ref1_relacion_seleccion: '', ref1_relacion: '', ref1_telefono: '', ref1_tiempo: '', ref1_ocupacion_seleccion: '', ref1_ocupacion: '',
-    ref2_nombre: '', ref2_relacion_seleccion: '', ref2_relacion: '', ref2_telefono: '', ref2_tiempo: '', ref2_ocupacion_seleccion: '', ref2_ocupacion: ''
   })
 
   useEffect(() => {
@@ -124,27 +107,6 @@ function ApplyForm() {
       .finally(() => setLoadingUbicaciones(false))
   }, [])
 
-  useEffect(() => {
-    fetch('/api/privacy-policy')
-      .then(res => res.json())
-      .then(res => {
-        if (res.success) {
-          setPolicyVersion(res.data.version)
-          setPolicyTitle(res.data.title)
-          setPolicyContent(res.data.content)
-        }
-      })
-      .catch(console.error)
-      .finally(() => setLoadingPolicy(false))
-  }, [])
-
-  function handlePolicyScroll(e: React.UIEvent<HTMLDivElement>) {
-    const el = e.currentTarget
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 24) {
-      setPolicyReadToEnd(true)
-    }
-  }
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
     if (type === 'checkbox') {
@@ -177,7 +139,7 @@ function ApplyForm() {
       }))
     } else {
       // Filtros estrictos de input
-      if (['edad', 'numero_documento', 'telefono', 'fiador_documento', 'fiador_telefono', 'ref1_telefono', 'ref2_telefono', 'anos_experiencia_declarados'].includes(name)) {
+      if (['edad', 'numero_documento', 'telefono'].includes(name)) {
         if (!NumbersOnly.test(value)) return;
       }
       let finalValue = value
@@ -207,7 +169,7 @@ function ApplyForm() {
     if (currentStep === 1) {
       if (!formData.activo_id) newErrors.activo_id = "Debes seleccionar una oportunidad para continuar."
     }
-    
+
     if (currentStep === 2) {
       if (formData.nombres.trim().length < 2) newErrors.nombres = "Obligatorio (mínimo 2 letras)."
       if (formData.apellidos.trim().length < 2) newErrors.apellidos = "Obligatorio (mínimo 2 letras)."
@@ -253,9 +215,8 @@ function ApplyForm() {
           newErrors.categoria_actividad = "Por favor, brinda más detalles."
         }
       }
-      const exp = parseInt(formData.anos_experiencia_declarados)
-      if (isNaN(exp) || exp < 0 || exp > 60) {
-        newErrors.anos_experiencia_declarados = "Debe ser un número entre 0 y 60."
+      if (!formData.anos_experiencia_declarados) {
+        newErrors.anos_experiencia_declarados = "Selecciona una opción."
       }
     }
 
@@ -275,42 +236,6 @@ function ApplyForm() {
           newErrors.acuerdo_pago_declarado = "Selecciona una opción."
         }
       }
-    }
-
-    if (currentStep === 5) {
-      if (formData.fiador_nombre.trim().length < 3) newErrors.fiador_nombre = "Nombre obligatorio."
-      if (formData.fiador_documento.length < 6 || formData.fiador_documento.length > 10) {
-        newErrors.fiador_documento = "Debe tener entre 6 y 10 números."
-      }
-      if (!PHONE_CO.test(formData.fiador_telefono)) {
-        newErrors.fiador_telefono = "Debe tener exactamente 10 números e iniciar en 3."
-      }
-      if (!formData.fiador_ingresos) newErrors.fiador_ingresos = "Selecciona una opción."
-    }
-
-    if (currentStep === 6) {
-      // Familiar
-      if (formData.ref1_nombre.trim().length < 3) newErrors.ref1_nombre = "Mínimo 3 letras."
-      if (!formData.ref1_relacion_seleccion) newErrors.ref1_relacion = "Selecciona una opción."
-      else if (formData.ref1_relacion_seleccion === 'Otro familiar' && formData.ref1_relacion.trim().length < 2) newErrors.ref1_relacion = "Mínimo 2 letras."
-      if (!PHONE_CO.test(formData.ref1_telefono)) newErrors.ref1_telefono = "Debe tener exactamente 10 números e iniciar en 3."
-      if (!formData.ref1_tiempo) newErrors.ref1_tiempo = "Selecciona una opción."
-      if (!formData.ref1_ocupacion_seleccion) newErrors.ref1_ocupacion = "Selecciona una opción."
-      else if (formData.ref1_ocupacion_seleccion === 'Otro' && formData.ref1_ocupacion.trim().length < 2) newErrors.ref1_ocupacion = "Mínimo 2 letras."
-
-      // Personal
-      if (formData.ref2_nombre.trim().length < 3) newErrors.ref2_nombre = "Mínimo 3 letras."
-      if (!formData.ref2_relacion_seleccion) newErrors.ref2_relacion = "Selecciona una opción."
-      else if (formData.ref2_relacion_seleccion === 'Otro' && formData.ref2_relacion.trim().length < 2) newErrors.ref2_relacion = "Mínimo 2 letras."
-      if (!PHONE_CO.test(formData.ref2_telefono)) newErrors.ref2_telefono = "Debe tener exactamente 10 números e iniciar en 3."
-      if (!formData.ref2_tiempo) newErrors.ref2_tiempo = "Selecciona una opción."
-      if (!formData.ref2_ocupacion_seleccion) newErrors.ref2_ocupacion = "Selecciona una opción."
-      else if (formData.ref2_ocupacion_seleccion === 'Otro' && formData.ref2_ocupacion.trim().length < 2) newErrors.ref2_ocupacion = "Mínimo 2 letras."
-    }
-
-    if (currentStep === 7) {
-      if (!policyReadToEnd) newErrors.dataAuthorization = "Debes leer la Política de Tratamiento de Datos Personales completa."
-      else if (!dataAuthorization) newErrors.dataAuthorization = "Debes autorizar el tratamiento de tus datos personales."
     }
 
     setErrors(newErrors)
@@ -341,13 +266,19 @@ function ApplyForm() {
   }
 
   const handleSubmit = async () => {
-    if (!validateStep(7)) return
+    if (!tratamientoDatos.policyReadToEnd || !tratamientoDatos.dataAuthorization) {
+      setTratamientoDatosError(!tratamientoDatos.policyReadToEnd
+        ? "Debes leer la Política de Tratamiento de Datos Personales completa."
+        : "Debes autorizar el tratamiento de tus datos personales.")
+      return
+    }
+    setTratamientoDatosError(null)
 
     setIsSubmitting(true)
     setSubmitError(null)
-    
+
     try {
-      const payload: ApplicationPayload = {
+      const payload: Omit<ApplicationPayload, 'fiador' | 'referencias'> = {
         activo_id: formData.activo_id,
         video_token: formData.video_token,
         perfil_publicitario: formData.perfil_publicitario as any,
@@ -364,39 +295,14 @@ function ApplyForm() {
           ? [...formData.plataformas, ...(formData.plataformas_otro && formData.plataformas_otro_texto.trim() ? [formData.plataformas_otro_texto.trim()] : [])]
           : undefined,
         categoria_actividad: formData.tipo_perfil === 'EMPLEADO' ? formData.categoria_actividad : undefined,
-        anos_experiencia_declarados: parseInt(formData.anos_experiencia_declarados) || 0,
+        anos_experiencia_declarados: formData.anos_experiencia_declarados,
         licencia_declarada_vigente: formData.licencia_declarada_vigente,
         licencia_categorias: formData.licencia_categorias,
         cantidad_comparendos_declarados: parseInt(formData.cantidad_comparendos_declarados) || 0,
         paz_y_salvo_declarado: formData.paz_y_salvo_declarado === '' ? null : formData.paz_y_salvo_declarado === 'SI',
         acuerdo_pago_declarado: formData.acuerdo_pago_declarado === '' ? null : formData.acuerdo_pago_declarado === 'SI',
-        fiador: {
-          nombre_completo: formData.fiador_nombre,
-          numero_documento: formData.fiador_documento,
-          telefono: formData.fiador_telefono,
-          ingresos_mensuales_aprox: formData.fiador_ingresos,
-          tiene_finca_raiz: formData.fiador_finca_raiz
-        },
-        referencias: [
-          {
-            tipo_referencia: 'FAMILIAR',
-            nombre_completo: formData.ref1_nombre,
-            parentesco_o_relacion: formData.ref1_relacion,
-            telefono: formData.ref1_telefono,
-            tiempo_conocimiento: formData.ref1_tiempo,
-            ocupacion: formData.ref1_ocupacion
-          },
-          {
-            tipo_referencia: 'PERSONAL',
-            nombre_completo: formData.ref2_nombre,
-            parentesco_o_relacion: formData.ref2_relacion,
-            telefono: formData.ref2_telefono,
-            tiempo_conocimiento: formData.ref2_tiempo,
-            ocupacion: formData.ref2_ocupacion
-          }
-        ],
-        policyVersion,
-        dataAuthorization: dataAuthorization as true
+        policyVersion: tratamientoDatos.policyVersion,
+        dataAuthorization: tratamientoDatos.dataAuthorization as true
       }
 
       const res = await fetch('/api/apply', {
@@ -411,7 +317,7 @@ function ApplyForm() {
         throw new Error(result.message || 'Ocurrió un error en el servidor. Revisa los datos.')
       }
 
-      setStep(8) // Éxito
+      setStep(TOTAL_PASOS + 1) // Éxito
 
     } catch (err: any) {
       console.error(err)
@@ -420,8 +326,6 @@ function ApplyForm() {
       setIsSubmitting(false)
     }
   }
-
-  const inputClass = (name: string) => `rounded-none border-neutral-300 focus-visible:ring-humania-sand h-12 transition-colors ${errors[name] ? 'border-red-500 focus-visible:ring-red-500 bg-red-50/30' : ''}`
 
   const selectedOportunidad = oportunidades.find(o => o.id === formData.activo_id)
 
@@ -435,15 +339,15 @@ function ApplyForm() {
             </span>
           </Link>
           <div className="text-sm font-medium text-humania-gray/50 tracking-widest">
-            {step < 8 ? `PASO 0${step} / 07` : ''}
+            {step <= TOTAL_PASOS ? `PASO 0${step} / 0${TOTAL_PASOS}` : ''}
           </div>
         </div>
       </header>
 
       <main className="flex-1 w-full flex justify-center py-12 px-6">
         <div className="w-full max-w-xl">
-          
-          {step > 1 && step < 8 && selectedOportunidad && (
+
+          {step > 1 && step <= TOTAL_PASOS && selectedOportunidad && (
             <div className="mb-10 pb-4 border-b border-neutral-100 flex justify-between items-end animate-in fade-in">
               <div>
                 <p className="text-xs text-humania-gray uppercase tracking-wider mb-1">Aplicando a:</p>
@@ -476,12 +380,12 @@ function ApplyForm() {
                 <div className="space-y-6">
                   <div className="grid sm:grid-cols-2 gap-6">
                     {oportunidades.map(opt => (
-                      <div 
+                      <div
                         key={opt.id}
                         onClick={() => { setFormData(prev => ({ ...prev, activo_id: opt.id })); setErrors({}) }}
                         className={`cursor-pointer rounded-2xl border transition-all duration-300 p-6 flex flex-col ${
-                          formData.activo_id === opt.id 
-                            ? 'border-humania-blue bg-humania-blue/5 shadow-md ring-1 ring-humania-blue' 
+                          formData.activo_id === opt.id
+                            ? 'border-humania-blue bg-humania-blue/5 shadow-md ring-1 ring-humania-blue'
                             : 'border-neutral-200 hover:border-humania-sand hover:shadow-md bg-white'
                         }`}
                       >
@@ -522,19 +426,19 @@ function ApplyForm() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-humania-gray font-medium">Nombres</Label>
-                    <Input name="nombres" maxLength={111} value={formData.nombres} onChange={handleChange} placeholder="Ej. Juan Carlos" className={inputClass('nombres')} />
+                    <Input name="nombres" maxLength={111} value={formData.nombres} onChange={handleChange} placeholder="Ej. Juan Carlos" className={inputClass('nombres', errors)} />
                     <ErrorMsg name="nombres" errors={errors} />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-humania-gray font-medium">Apellidos</Label>
-                    <Input name="apellidos" maxLength={111} value={formData.apellidos} onChange={handleChange} placeholder="Ej. Pérez Gómez" className={inputClass('apellidos')} />
+                    <Input name="apellidos" maxLength={111} value={formData.apellidos} onChange={handleChange} placeholder="Ej. Pérez Gómez" className={inputClass('apellidos', errors)} />
                     <ErrorMsg name="apellidos" errors={errors} />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-humania-gray font-medium">Edad</Label>
-                    <Input name="edad" value={formData.edad} onChange={handleChange} maxLength={2} placeholder="Ej. 30" className={inputClass('edad')} />
+                    <Input name="edad" value={formData.edad} onChange={handleChange} maxLength={2} placeholder="Ej. 30" className={inputClass('edad', errors)} />
                     <ErrorMsg name="edad" errors={errors} />
                   </div>
                   <div className="space-y-2">
@@ -549,7 +453,7 @@ function ApplyForm() {
 
                 <div className="space-y-2">
                   <Label className="text-humania-gray font-medium">Número (Solo dígitos)</Label>
-                  <Input name="numero_documento" value={formData.numero_documento} onChange={handleChange} maxLength={10} placeholder="Ej. 1020304050" className={inputClass('numero_documento')} />
+                  <Input name="numero_documento" value={formData.numero_documento} onChange={handleChange} maxLength={10} placeholder="Ej. 1020304050" className={inputClass('numero_documento', errors)} />
                   <ErrorMsg name="numero_documento" errors={errors} />
                 </div>
 
@@ -567,26 +471,26 @@ function ApplyForm() {
 
                 <div className="space-y-2">
                   <Label className="text-humania-gray font-medium">Correo Electrónico</Label>
-                  <Input type="email" name="correo_electronico" value={formData.correo_electronico} onChange={handleChange} className={inputClass('correo_electronico')} placeholder="usuario@ejemplo.com" />
+                  <Input type="email" name="correo_electronico" value={formData.correo_electronico} onChange={handleChange} className={inputClass('correo_electronico', errors)} placeholder="usuario@ejemplo.com" />
                   <ErrorMsg name="correo_electronico" errors={errors} />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-humania-gray font-medium">Confirmar Correo Electrónico</Label>
-                  <Input 
-                    type="email" 
-                    name="confirmacion_correo" 
-                    value={formData.confirmacion_correo} 
-                    onChange={handleChange} 
+                  <Input
+                    type="email"
+                    name="confirmacion_correo"
+                    value={formData.confirmacion_correo}
+                    onChange={handleChange}
                     onPaste={(e) => e.preventDefault()}
                     placeholder="usuario@ejemplo.com"
-                    className={inputClass('confirmacion_correo')} 
+                    className={inputClass('confirmacion_correo', errors)}
                   />
                   <ErrorMsg name="confirmacion_correo" errors={errors} />
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-humania-gray font-medium">Teléfono Móvil</Label>
-                  <Input name="telefono" maxLength={10} value={formData.telefono} onChange={handleChange} placeholder="Ej. 3001234567" className={inputClass('telefono')} />
+                  <Input name="telefono" maxLength={10} value={formData.telefono} onChange={handleChange} placeholder="Ej. 3001234567" className={inputClass('telefono', errors)} />
                   <ErrorMsg name="telefono" errors={errors} />
                 </div>
 
@@ -625,7 +529,7 @@ function ApplyForm() {
 
                 <div className="space-y-2">
                   <Label className="text-humania-gray font-medium">Barrio</Label>
-                  <Input name="barrio" maxLength={15} value={formData.barrio} onChange={handleChange} placeholder="Ej. Cedritos" className={inputClass('barrio')} />
+                  <Input name="barrio" maxLength={15} value={formData.barrio} onChange={handleChange} placeholder="Ej. Cedritos" className={inputClass('barrio', errors)} />
                   <ErrorMsg name="barrio" errors={errors} />
                 </div>
               </div>
@@ -701,7 +605,7 @@ function ApplyForm() {
                         maxLength={15}
                         value={formData.plataformas_otro_texto}
                         onChange={handleChange}
-                        className={inputClass('plataformas')}
+                        className={inputClass('plataformas', errors)}
                         placeholder="Especifica (máx. 15 caracteres)"
                       />
                     )}
@@ -726,7 +630,7 @@ function ApplyForm() {
                         maxLength={15}
                         value={formData.categoria_actividad}
                         onChange={handleChange}
-                        className={inputClass('categoria_actividad')}
+                        className={inputClass('categoria_actividad', errors)}
                         placeholder="Especifica (máx. 15 caracteres)"
                       />
                     )}
@@ -735,8 +639,16 @@ function ApplyForm() {
                 )}
 
                 <div className="space-y-2">
-                  <Label className="text-humania-gray font-medium">Años de experiencia (manejando o en tu ocupación)</Label>
-                  <Input name="anos_experiencia_declarados" maxLength={2} value={formData.anos_experiencia_declarados} onChange={handleChange} placeholder="Ej. 3" className={inputClass('anos_experiencia_declarados')} />
+                  <Label className="text-humania-gray font-medium">Tiempo de experiencia (conduciendo o en tu ocupación)</Label>
+                  <select
+                    name="anos_experiencia_declarados"
+                    value={formData.anos_experiencia_declarados}
+                    onChange={handleChange}
+                    className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.anos_experiencia_declarados ? 'border-red-500' : 'border-neutral-300'}`}
+                  >
+                    <option value="" disabled>Selecciona una opción</option>
+                    {TIEMPO_EXPERIENCIA_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
                   <ErrorMsg name="anos_experiencia_declarados" errors={errors} />
                 </div>
               </div>
@@ -753,9 +665,9 @@ function ApplyForm() {
 
               <div className="space-y-8">
                 <div className="flex items-start space-x-4 p-6 border-l-4 border-humania-blue bg-humania-blue/5 shadow-sm">
-                  <Checkbox 
-                    id="licencia" 
-                    checked={formData.licencia_declarada_vigente} 
+                  <Checkbox
+                    id="licencia"
+                    checked={formData.licencia_declarada_vigente}
                     onCheckedChange={(checked) => setFormData(prev => ({ ...prev, licencia_declarada_vigente: !!checked }))}
                     className="mt-1 w-5 h-5 data-[state=checked]:bg-humania-blue data-[state=checked]:border-humania-blue"
                   />
@@ -786,10 +698,10 @@ function ApplyForm() {
                     <div className="mt-2"><ErrorMsg name="licencia_categorias" errors={errors} /></div>
                   </div>
                 )}
-                
+
                 <div className="space-y-3">
                   <Label className="text-humania-gray font-medium">¿Cuántos comparendos estimas tener pendientes?</Label>
-                  <Input name="cantidad_comparendos_declarados" maxLength={2} value={formData.cantidad_comparendos_declarados} onChange={handleChange} placeholder="Ej. 2" className={inputClass('cantidad_comparendos_declarados')} />
+                  <Input name="cantidad_comparendos_declarados" maxLength={2} value={formData.cantidad_comparendos_declarados} onChange={handleChange} placeholder="Ej. 2" className={inputClass('cantidad_comparendos_declarados', errors)} />
                   <p className="text-xs text-humania-gray/70 font-medium mt-1">La cantidad de comparendos vigentes será tenida en cuenta durante el proceso de selección. Si tienes comparendos pendientes, es posible que debas responder preguntas adicionales para validar tu situación.</p>
                   <ErrorMsg name="cantidad_comparendos_declarados" errors={errors} />
                 </div>
@@ -846,250 +758,13 @@ function ApplyForm() {
             </div>
           )}
 
-          {/* STEP 5: FIADOR */}
+          {/* STEP 5: TRATAMIENTO DE DATOS (mismo consentimiento de siempre, ver _shared/TratamientoDatosStep) */}
           {step === 5 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div>
-                <h1 className="text-3xl font-bold text-humania-blue tracking-tight mb-2">Respaldo Solidario</h1>
-                <p className="text-humania-gray/80 text-lg">Información requerida de tu fiador.</p>
-              </div>
-
-              <div className="grid gap-6">
-                <div className="space-y-2">
-                  <Label className="text-humania-gray font-medium">Nombre Completo del Fiador</Label>
-                  <Input name="fiador_nombre" maxLength={111} value={formData.fiador_nombre} onChange={handleChange} placeholder="Ej. Maria Fernández" className={inputClass('fiador_nombre')} />
-                  <ErrorMsg name="fiador_nombre" errors={errors} />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-humania-gray font-medium">Documento (Solo números)</Label>
-                    <Input name="fiador_documento" maxLength={10} value={formData.fiador_documento} onChange={handleChange} placeholder="Ej. 1020304050" className={inputClass('fiador_documento')} />
-                    <ErrorMsg name="fiador_documento" errors={errors} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-humania-gray font-medium">Teléfono</Label>
-                    <Input name="fiador_telefono" maxLength={10} value={formData.fiador_telefono} onChange={handleChange} placeholder="Ej. 3001234567" className={inputClass('fiador_telefono')} />
-                    <ErrorMsg name="fiador_telefono" errors={errors} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-humania-gray font-medium">Ingresos Mensuales Demostrables (COP)</Label>
-                  <select
-                    name="fiador_ingresos"
-                    value={formData.fiador_ingresos}
-                    onChange={handleChange}
-                    className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.fiador_ingresos ? 'border-red-500' : 'border-neutral-300'}`}
-                  >
-                    <option value="" disabled>Selecciona una opción</option>
-                    {INGRESOS_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                  <ErrorMsg name="fiador_ingresos" errors={errors} />
-                </div>
-                <div className="flex items-center space-x-3 pt-4 p-4 border border-neutral-200 bg-neutral-50 rounded-lg">
-                  <Checkbox 
-                    id="fincaraiz" 
-                    checked={formData.fiador_finca_raiz} 
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, fiador_finca_raiz: !!checked }))}
-                    className="data-[state=checked]:bg-humania-blue data-[state=checked]:border-humania-blue"
-                  />
-                  <Label htmlFor="fincaraiz" className="font-medium text-humania-blue cursor-pointer">Mi fiador posee finca raíz a su nombre</Label>
-                </div>
-              </div>
-            </div>
+            <TratamientoDatosStep error={tratamientoDatosError ?? undefined} onChange={setTratamientoDatos} />
           )}
 
-          {/* STEP 6: REFERENCIAS */}
-          {step === 6 && (
-            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div>
-                <h1 className="text-3xl font-bold text-humania-blue tracking-tight mb-2">Referencias</h1>
-                <p className="text-humania-gray/80 text-lg">Requerimos dos tipos diferentes de respaldo.</p>
-              </div>
-
-              {/* Referencia Familiar */}
-              <div className="space-y-6 bg-white border border-neutral-200 p-6 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-humania-blue"></div>
-                
-                <div className="border-b border-neutral-100 pb-4 mb-6">
-                  <h3 className="text-xl font-bold text-humania-blue">Referencia Familiar</h3>
-                </div>
-                
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label className="text-humania-gray font-medium">Nombre Completo</Label>
-                    <Input name="ref1_nombre" maxLength={60} value={formData.ref1_nombre} onChange={handleChange} placeholder="Ej. Carlos Pérez" className={inputClass('ref1_nombre')} />
-                    <ErrorMsg name="ref1_nombre" errors={errors} />
-                  </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-humania-gray font-medium">Parentesco</Label>
-                      <select name="ref1_relacion_seleccion" value={formData.ref1_relacion_seleccion} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref1_relacion ? 'border-red-500' : 'border-neutral-300'}`}>
-                        <option value="" disabled>Selecciona una opción</option>
-                        {PARENTESCO_FAMILIAR_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                      {formData.ref1_relacion_seleccion === 'Otro familiar' && (
-                        <Input name="ref1_relacion" maxLength={15} value={formData.ref1_relacion} onChange={handleChange} placeholder="Especifica (máx. 15 caracteres)" className={inputClass('ref1_relacion')} />
-                      )}
-                      <ErrorMsg name="ref1_relacion" errors={errors} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-humania-gray font-medium">Teléfono</Label>
-                      <Input name="ref1_telefono" maxLength={10} value={formData.ref1_telefono} onChange={handleChange} placeholder="Ej. 3001234567" className={inputClass('ref1_telefono')} />
-                      <ErrorMsg name="ref1_telefono" errors={errors} />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-humania-gray font-medium">Tiempo de conocerse</Label>
-                      <select name="ref1_tiempo" value={formData.ref1_tiempo} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref1_tiempo ? 'border-red-500' : 'border-neutral-300'}`}>
-                        <option value="" disabled>Selecciona una opción</option>
-                        {TIEMPO_CONOCERSE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <ErrorMsg name="ref1_tiempo" errors={errors} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-humania-gray font-medium">Ocupación / Trabajo</Label>
-                      <select name="ref1_ocupacion_seleccion" value={formData.ref1_ocupacion_seleccion} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref1_ocupacion ? 'border-red-500' : 'border-neutral-300'}`}>
-                        <option value="" disabled>Selecciona una opción</option>
-                        {CATEGORIA_ACTIVIDAD_OPTIONS.map(c => <option key={c.value} value={c.value}>{`${c.value} / Ej: ${c.ejemplo}`}</option>)}
-                        <option value="Otro">Otro</option>
-                      </select>
-                      {formData.ref1_ocupacion_seleccion === 'Otro' && (
-                        <Input name="ref1_ocupacion" maxLength={15} value={formData.ref1_ocupacion} onChange={handleChange} placeholder="Especifica (máx. 15 caracteres)" className={inputClass('ref1_ocupacion')} />
-                      )}
-                      <ErrorMsg name="ref1_ocupacion" errors={errors} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Referencia Personal */}
-              <div className="space-y-6 bg-white border border-neutral-200 p-6 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-humania-sand"></div>
-                
-                <div className="border-b border-neutral-100 pb-4 mb-6">
-                  <h3 className="text-xl font-bold text-humania-blue">Referencia Personal</h3>
-                </div>
-                
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label className="text-humania-gray font-medium">Nombre Completo</Label>
-                    <Input name="ref2_nombre" maxLength={60} value={formData.ref2_nombre} onChange={handleChange} placeholder="Ej. Andrés Gómez" className={inputClass('ref2_nombre')} />
-                    <ErrorMsg name="ref2_nombre" errors={errors} />
-                  </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-humania-gray font-medium">Relación con el candidato</Label>
-                      <select name="ref2_relacion_seleccion" value={formData.ref2_relacion_seleccion} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref2_relacion ? 'border-red-500' : 'border-neutral-300'}`}>
-                        <option value="" disabled>Selecciona una opción</option>
-                        {RELACION_PERSONAL_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                      {formData.ref2_relacion_seleccion === 'Otro' && (
-                        <Input name="ref2_relacion" maxLength={15} value={formData.ref2_relacion} onChange={handleChange} placeholder="Especifica (máx. 15 caracteres)" className={inputClass('ref2_relacion')} />
-                      )}
-                      <ErrorMsg name="ref2_relacion" errors={errors} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-humania-gray font-medium">Teléfono</Label>
-                      <Input name="ref2_telefono" maxLength={10} value={formData.ref2_telefono} onChange={handleChange} placeholder="Ej. 3001234567" className={inputClass('ref2_telefono')} />
-                      <ErrorMsg name="ref2_telefono" errors={errors} />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-humania-gray font-medium">Tiempo de conocerse</Label>
-                      <select name="ref2_tiempo" value={formData.ref2_tiempo} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref2_tiempo ? 'border-red-500' : 'border-neutral-300'}`}>
-                        <option value="" disabled>Selecciona una opción</option>
-                        {TIEMPO_CONOCERSE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <ErrorMsg name="ref2_tiempo" errors={errors} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-humania-gray font-medium">Ocupación / Trabajo</Label>
-                      <select name="ref2_ocupacion_seleccion" value={formData.ref2_ocupacion_seleccion} onChange={handleChange} className={`flex h-12 w-full rounded-none border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand ${errors.ref2_ocupacion ? 'border-red-500' : 'border-neutral-300'}`}>
-                        <option value="" disabled>Selecciona una opción</option>
-                        {CATEGORIA_ACTIVIDAD_OPTIONS.map(c => <option key={c.value} value={c.value}>{`${c.value} / Ej: ${c.ejemplo}`}</option>)}
-                        <option value="Otro">Otro</option>
-                      </select>
-                      {formData.ref2_ocupacion_seleccion === 'Otro' && (
-                        <Input name="ref2_ocupacion" maxLength={15} value={formData.ref2_ocupacion} onChange={handleChange} placeholder="Especifica (máx. 15 caracteres)" className={inputClass('ref2_ocupacion')} />
-                      )}
-                      <ErrorMsg name="ref2_ocupacion" errors={errors} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          )}
-
-          {/* STEP 7: AUTORIZACIÓN */}
-          {step === 7 && (
-            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div>
-                <h1 className="text-3xl font-bold text-humania-blue tracking-tight mb-2">Autorización</h1>
-                <p className="text-humania-gray/80 text-lg">Antes de enviar tu postulación, necesitamos tu autorización.</p>
-              </div>
-
-              <div className="space-y-6 bg-white border border-neutral-200 p-6 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-humania-blue"></div>
-
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setPolicyModalOpen(true)}
-                    disabled={loadingPolicy}
-                    className="text-humania-blue font-semibold underline underline-offset-2 hover:text-humania-blue/80 disabled:opacity-50 cursor-pointer"
-                  >
-                    Consulte nuestra Política de Tratamiento y Protección de Datos Personales.
-                  </button>
-                  {!policyReadToEnd && (
-                    <p className="text-xs text-humania-gray/70 mt-2">Debes abrir y leer la política completa antes de continuar.</p>
-                  )}
-                </div>
-
-                <div className="flex items-start space-x-3 pt-4 p-4 border border-neutral-200 bg-neutral-50 rounded-lg">
-                  <Checkbox
-                    id="dataAuthorization"
-                    checked={dataAuthorization}
-                    onCheckedChange={(checked) => setDataAuthorization(!!checked)}
-                    className="mt-0.5 data-[state=checked]:bg-humania-blue data-[state=checked]:border-humania-blue"
-                  />
-                  <Label htmlFor="dataAuthorization" className="font-normal text-humania-gray leading-relaxed cursor-pointer">
-                    He leído y comprendido la Política de Tratamiento y Protección de Datos Personales de Humania Go y autorizo el tratamiento de mis datos personales conforme a sus finalidades.
-                  </Label>
-                </div>
-                {errors.dataAuthorization && (
-                  <p className="text-red-600 text-sm flex items-center gap-1"><AlertCircle className="w-4 h-4" />{errors.dataAuthorization}</p>
-                )}
-              </div>
-
-              <Dialog open={policyModalOpen} onOpenChange={setPolicyModalOpen}>
-                <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-2xl max-h-[85vh] flex flex-col">
-                  <DialogHeader>
-                    <DialogTitle className="text-humania-blue">{policyTitle || 'Política de Tratamiento y Protección de Datos Personales'}</DialogTitle>
-                    <p className="text-xs text-humania-gray/70">Versión {policyVersion}</p>
-                  </DialogHeader>
-                  <div
-                    onScroll={handlePolicyScroll}
-                    className="overflow-y-auto flex-1 mt-2 pr-2 text-sm text-humania-gray whitespace-pre-wrap leading-relaxed"
-                  >
-                    {policyContent}
-                  </div>
-                  {policyReadToEnd && (
-                    <p className="text-xs text-green-700 pt-2 border-t border-neutral-100">Has llegado al final del documento.</p>
-                  )}
-                </DialogContent>
-              </Dialog>
-            </div>
-          )}
-
-          {/* STEP 8: ÉXITO */}
-          {step === 8 && (
+          {/* STEP 6: ÉXITO */}
+          {step === TOTAL_PASOS + 1 && (
             <div className="flex flex-col items-center justify-center py-20 text-center animate-in zoom-in duration-500">
               <div className="w-24 h-24 bg-humania-blue text-humania-sand rounded-full flex items-center justify-center mb-8 shadow-xl">
                 <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -1109,7 +784,7 @@ function ApplyForm() {
           )}
 
           {/* Navegación del Wizard */}
-          {step < 8 && (
+          {step <= TOTAL_PASOS && (
             <div className="mt-12 flex justify-between pt-6 border-t border-neutral-100 sticky bottom-0 bg-white py-4">
               {step > 1 ? (
                 <Button
@@ -1122,14 +797,14 @@ function ApplyForm() {
                 </Button>
               ) : <div></div>}
 
-              {step < 7 ? (
+              {step < TOTAL_PASOS ? (
                 <Button onClick={nextStep} className="bg-humania-blue hover:bg-humania-blue/90 text-white rounded-none px-6 sm:px-10 py-6 text-sm sm:text-base font-semibold shadow-md transition-transform active:scale-95">
                   Continuar
                 </Button>
               ) : (
                 <Button
                   onClick={handleSubmit}
-                  disabled={isSubmitting || !policyReadToEnd || !dataAuthorization}
+                  disabled={isSubmitting || !tratamientoDatos.policyReadToEnd || !tratamientoDatos.dataAuthorization}
                   className="bg-humania-blue hover:bg-humania-blue/90 text-white rounded-none px-4 sm:px-10 py-6 text-sm sm:text-base font-semibold shadow-md transition-transform active:scale-95 disabled:opacity-50"
                 >
                   {isSubmitting ? 'Verificando...' : 'Enviar Solicitud'}

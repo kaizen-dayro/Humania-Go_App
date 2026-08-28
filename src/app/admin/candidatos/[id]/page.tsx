@@ -2,12 +2,13 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/server'
 import { Button } from '@/components/ui/button'
-import { evaluateCandidateRequirements, evaluacionAvanzadaCompleta, visitaDomiciliariaCompleta } from '@/lib/domain/eligibility'
+import { evaluateCandidateRequirements, evaluacionAvanzadaCompleta, visitaDomiciliariaCompleta, visitaDomiciliariaEsNoApta } from '@/lib/domain/eligibility'
 import { CheckCircle2, XCircle, AlertTriangle, HelpCircle } from 'lucide-react'
 import { CandidateActions } from './CandidateActions'
 import { EvaluacionForm } from './EvaluacionForm'
 import { LicenciaVerificacionForm } from './LicenciaVerificacionForm'
 import { AntecedentesJudicialesForm } from './AntecedentesJudicialesForm'
+import { Parte2Form } from './Parte2Form'
 import { ContractStatusForm } from './ContractStatusForm'
 import { ReferenciaLaboralSection, type ReferenciaLaboralRow } from './ReferenciaLaboralSection'
 import { CollapsibleCard } from './CollapsibleCard'
@@ -144,6 +145,7 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
               evaluacionCompleta={evaluacionAvanzadaCompleta(candidato.candidatos_evaluacion)}
               referenciaLaboralCompleta={referenciaLaboral?.estado === 'COMPLETADA'}
               visitaDomiciliariaCompleta={visitaDomiciliariaCompleta(candidato.candidatos_evaluacion)}
+              visitaDomiciliariaNoApta={visitaDomiciliariaEsNoApta(candidato.candidatos_evaluacion)}
               puedeDesistirDesdeSeleccionado={!candidato.estatus_contractual}
             />
           </div>
@@ -306,6 +308,14 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
             </>
           )}
 
+          <Parte2Form
+            candidatoId={candidato.id}
+            estado={candidato.estado}
+            parte2Token={candidato.parte2_token}
+            parte2HabilitadaEn={candidato.parte2_habilitada_en}
+            parte2CompletadaEn={candidato.parte2_completada_en}
+          />
+
           <div className="bg-white border border-neutral-200 p-8 mb-6 rounded-lg shadow-sm">
              <h3 className="text-sm font-bold text-humania-gray/50 border-b border-neutral-100 pb-3 mb-6 tracking-widest">FIADOR SOLIDARIO</h3>
              {fiador ? (
@@ -323,6 +333,21 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
                      </div>
                    ) : (
                      <p className="text-sm font-medium text-humania-blue">No</p>
+                   )}
+                 </div>
+                 <div className="md:col-span-2">
+                   <p className="text-[11px] text-humania-gray/50 font-bold tracking-widest mb-1.5 uppercase">Calificación automática (ingresos/finca raíz)</p>
+                   {candidato.fiador_calificacion_automatica ? (
+                     <div className="flex items-center gap-2 mt-1">
+                       {candidato.fiador_calificacion_automatica === 'CUMPLE'
+                         ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+                         : <XCircle className="w-5 h-5 text-red-500 shrink-0" />}
+                       <span className={`text-sm font-medium ${candidato.fiador_calificacion_automatica === 'CUMPLE' ? 'text-green-700' : 'text-red-700'}`}>
+                         {candidato.fiador_calificacion_automatica === 'CUMPLE' ? 'Cumple (ingresos o finca raíz)' : 'No cumple -- informativo, no descarta automáticamente'}
+                       </span>
+                     </div>
+                   ) : (
+                     <p className="text-sm text-humania-gray">No calculada.</p>
                    )}
                  </div>
                </div>

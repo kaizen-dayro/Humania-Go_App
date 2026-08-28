@@ -3,35 +3,37 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { saveAntecedentesJudiciales } from '@/app/admin/actions'
 
-type EstadoCumplimiento = '' | 'CUMPLE' | 'NO_CUMPLE'
+type EstadoAptitud = '' | 'APTO' | 'NO_APTO'
 
-function CumpleNoCumple({ id, label, value, onChange }: { id: string, label: string, value: EstadoCumplimiento, onChange: (v: EstadoCumplimiento) => void }) {
+function AptoNoApto({ id, label, value, onChange }: { id: string, label: string, value: EstadoAptitud, onChange: (v: EstadoAptitud) => void }) {
   return (
     <div className="space-y-2">
-      <Label className="text-humania-gray font-medium">{label}</Label>
-      <RadioGroup value={value} onValueChange={(v) => onChange(v as EstadoCumplimiento)} className="flex gap-4">
-        <div className="flex items-center space-x-2 bg-neutral-50 border border-neutral-200 px-5 py-3 hover:border-humania-blue transition-colors cursor-pointer rounded-lg">
-          <RadioGroupItem value="CUMPLE" id={`${id}-cumple`} className="text-humania-blue w-5 h-5" />
-          <Label htmlFor={`${id}-cumple`} className="font-medium cursor-pointer">Cumple</Label>
-        </div>
-        <div className="flex items-center space-x-2 bg-neutral-50 border border-neutral-200 px-5 py-3 hover:border-humania-blue transition-colors cursor-pointer rounded-lg">
-          <RadioGroupItem value="NO_CUMPLE" id={`${id}-no-cumple`} className="text-humania-blue w-5 h-5" />
-          <Label htmlFor={`${id}-no-cumple`} className="font-medium cursor-pointer">No Cumple</Label>
-        </div>
-      </RadioGroup>
+      <Label htmlFor={id} className="text-humania-gray font-medium">{label}</Label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value as EstadoAptitud)}
+        className="flex h-11 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand"
+      >
+        <option value="">Sin verificar</option>
+        <option value="APTO">Apto</option>
+        <option value="NO_APTO">No Apto</option>
+      </select>
     </div>
   )
 }
 
 /**
- * Verificación manual de antecedentes judiciales (Fase 19, 2026-08-25),
- * solo visible para candidatos en REVISION_PRELIMINAR. Tres preguntas
- * independientes -- Judiciales / Procuraduría / Contraloría --, cada una
- * Cumple/No Cumple. De apoyo a la decisión humana, no dispara descarte
- * automático por sí sola.
+ * Verificación manual de antecedentes (Fase 19, 2026-08-25; relabel y
+ * dropdown Apto/No Apto en KAI-21, 2026-08-28), solo visible para
+ * candidatos en REVISION_PRELIMINAR. Tres preguntas independientes --
+ * Policía (antes "Judiciales" en la interfaz -- el nombre de columna
+ * antecedentes_judiciales_estado no cambió) / Procuraduría / Contraloría
+ * --, cada una Apto/No Apto (antes Cumple/No Cumple, también en la base
+ * de datos -- ver migración 00053). De apoyo a la decisión humana, no
+ * dispara descarte automático por sí sola.
  */
 export function AntecedentesJudicialesForm({
   candidatoId,
@@ -40,9 +42,9 @@ export function AntecedentesJudicialesForm({
   candidatoId: string
   initial: { judiciales: string | null, procuraduria: string | null, contraloria: string | null }
 }) {
-  const [judiciales, setJudiciales] = useState<EstadoCumplimiento>((initial.judiciales as EstadoCumplimiento) || '')
-  const [procuraduria, setProcuraduria] = useState<EstadoCumplimiento>((initial.procuraduria as EstadoCumplimiento) || '')
-  const [contraloria, setContraloria] = useState<EstadoCumplimiento>((initial.contraloria as EstadoCumplimiento) || '')
+  const [judiciales, setJudiciales] = useState<EstadoAptitud>((initial.judiciales as EstadoAptitud) || '')
+  const [procuraduria, setProcuraduria] = useState<EstadoAptitud>((initial.procuraduria as EstadoAptitud) || '')
+  const [contraloria, setContraloria] = useState<EstadoAptitud>((initial.contraloria as EstadoAptitud) || '')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -67,9 +69,9 @@ export function AntecedentesJudicialesForm({
       </p>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid md:grid-cols-3 gap-6">
-          <CumpleNoCumple id="judiciales" label="Judiciales" value={judiciales} onChange={setJudiciales} />
-          <CumpleNoCumple id="procuraduria" label="Procuraduría" value={procuraduria} onChange={setProcuraduria} />
-          <CumpleNoCumple id="contraloria" label="Contraloría" value={contraloria} onChange={setContraloria} />
+          <AptoNoApto id="policia" label="Policía" value={judiciales} onChange={setJudiciales} />
+          <AptoNoApto id="procuraduria" label="Procuraduría" value={procuraduria} onChange={setProcuraduria} />
+          <AptoNoApto id="contraloria" label="Contraloría" value={contraloria} onChange={setContraloria} />
         </div>
         <div className="flex items-center gap-4 pt-2 border-t border-neutral-100">
           <Button type="submit" disabled={loading} size="sm" className="bg-humania-blue hover:bg-humania-blue/90 mt-4">
