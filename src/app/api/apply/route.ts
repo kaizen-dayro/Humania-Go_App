@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { ApplicationPayloadSchema, evaluateInitialEligibility, edadFueraDeRangoElegible, evaluateComparendosFilter } from '@/lib/domain/eligibility'
+import { ApplicationPayloadSchema, evaluateInitialEligibility, edadFueraDeRangoElegible, experienciaFueraDeRangoElegible, evaluateComparendosFilter } from '@/lib/domain/eligibility'
 import { sendCandidateEmail } from '@/lib/services/email'
 import { checkSimitFines } from '@/lib/services/simit'
 
@@ -53,6 +53,29 @@ export async function POST(req: NextRequest) {
 
       if (descarteError) {
         console.error(`Error registrando descarte por edad [request_id=${requestId}]:`, descarteError)
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: { id: null, estado_preliminar: 'DESCARTADO', razones: [] }
+      }, { status: 201 })
+    }
+
+    // 1c. Filtro de tiempo de experiencia (KAI-22, 2026-08-28): igual
+    // patrón que el filtro de edad -- "Menos de 1 año" nunca llega a
+    // crear una fila en `candidatos`, solo un registro mínimo aparte
+    // (contador + agradecimiento a las 48h, anonimización a los 3 meses).
+    // La persona no se entera: la respuesta es igual a un envío exitoso.
+    if (experienciaFueraDeRangoElegible(data.anos_experiencia_declarados)) {
+      const { error: descarteError } = await supabaseAdmin.rpc('registrar_descarte_por_experiencia', {
+        p_activo_id: data.activo_id,
+        p_nombres: data.nombres,
+        p_correo_electronico: data.correo_electronico,
+        p_tiempo_experiencia_declarado: data.anos_experiencia_declarados
+      })
+
+      if (descarteError) {
+        console.error(`Error registrando descarte por experiencia [request_id=${requestId}]:`, descarteError)
       }
 
       return NextResponse.json({
@@ -141,10 +164,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Operación Transaccional en PostgreSQL
+    // Fiador y Referencias YA NO se envían aquí (KAI-9, 2026-08-27) --
+    // se difieren a la Parte 2 (/api/apply/parte2), después de la
+    // entrevista humana.
     const { data: candidateId, error: rpcError } = await supabaseAdmin.rpc('submit_application', {
       p_candidato: candidatoData,
-      p_fiador: data.fiador,
-      p_referencias: data.referencias,
       p_autorizacion: {
         policy_version: data.policyVersion,
         authorized: data.dataAuthorization,

@@ -692,15 +692,18 @@ export async function saveLicenciaVerificacion(candidatoId: string, verificada: 
 }
 
 /**
- * Server Action para la verificación manual de antecedentes judiciales
- * (Fase 19, 2026-08-25): Judiciales / Procuraduría / Contraloría, cada
- * uno Cumple/No Cumple. Igual que la licencia, es informativa -- apoya la
- * decisión de descarte manual del equipo de RRHH, no la dispara sola.
+ * Server Action para la verificación manual de antecedentes (Fase 19,
+ * 2026-08-25): Policía (antes "Judiciales" en la interfaz -- el nombre de
+ * columna antecedentes_judiciales_estado no cambió) / Procuraduría /
+ * Contraloría, cada uno Apto/No Apto (antes Cumple/No Cumple, también en
+ * la base de datos -- KAI-21, 2026-08-28, ver migración 00053). Igual
+ * que la licencia, es informativa -- apoya la decisión de descarte
+ * manual del equipo de RRHH, no la dispara sola.
  */
 export async function saveAntecedentesJudiciales(candidatoId: string, data: {
-  judiciales: 'CUMPLE' | 'NO_CUMPLE' | null
-  procuraduria: 'CUMPLE' | 'NO_CUMPLE' | null
-  contraloria: 'CUMPLE' | 'NO_CUMPLE' | null
+  judiciales: 'APTO' | 'NO_APTO' | null
+  procuraduria: 'APTO' | 'NO_APTO' | null
+  contraloria: 'APTO' | 'NO_APTO' | null
 }) {
   const supabase = await createClient()
 
@@ -723,6 +726,57 @@ export async function saveAntecedentesJudiciales(candidatoId: string, data: {
   if (error) {
     console.error('Error guardando antecedentes judiciales:', error)
     return { success: false, error: 'Error interno de base de datos' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  return { success: true }
+}
+
+/**
+ * Server Action para el check "Apto, esperando Parte 2" (KAI-9/KAI-15,
+ * 2026-08-27): RRHH lo marca después de la entrevista humana, cuando
+ * considera al candidato apto para continuar. Genera el token de un solo
+ * uso vía la RPC marcar_apto_esperando_parte2 (centraliza en PostgreSQL
+ * las reglas de negocio -- candidato DESCARTADO o Parte 2 ya enviada se
+ * rechazan ahí, no solo en el frontend). El candidato NO cambia de
+ * `estado` -- sigue en REVISION_PRELIMINAR.
+ */
+export async function marcarAptoEsperandoParte2(candidatoId: string) {
+  const supabase = await createClient()
+
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { data: token, error } = await supabase.rpc('marcar_apto_esperando_parte2', {
+    p_candidato_id: candidatoId
+  })
+
+  if (error) {
+    console.error('Error marcando "Apto, esperando Parte 2":', error)
+    return { success: false, error: error.message }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  return { success: true, token }
+}
+
+/**
+ * Server Action para el botón "Desactivar" (KAI-19, 2026-08-28): invalida
+ * el link de Parte 2 sin descartar al candidato -- reversible, a
+ * diferencia de DESCARTADO. Para reactivar se reutiliza
+ * marcarAptoEsperandoParte2 tal cual (genera un token nuevo).
+ */
+export async function desactivarParte2(candidatoId: string) {
+  const supabase = await createClient()
+
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('desactivar_parte2', { p_candidato_id: candidatoId })
+
+  if (error) {
+    console.error('Error desactivando Parte 2:', error)
+    return { success: false, error: error.message }
   }
 
   revalidatePath(`/admin/candidatos/${candidatoId}`)

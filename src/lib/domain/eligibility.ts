@@ -50,6 +50,29 @@ export const RELACION_PERSONAL_OPTIONS = [
 export const TIEMPO_CONOCERSE_OPTIONS = ['1 año', '2 años', '3 años', 'más de 5 años'] as const;
 
 /**
+ * Tiempo de experiencia declarado por el candidato en /apply, Paso 3
+ * (KAI-22, 2026-08-28) -- antes un número libre de años, ahora categoría
+ * cerrada. "Menos de 1 año" nunca llega a crear un candidato real -- se
+ * descarta en silencio antes, ver evaluar más abajo.
+ */
+export const TIEMPO_EXPERIENCIA_OPTIONS = ['Menos de 1 año', '1 a 3 años', '3 a 5 años', 'más de 5 años'] as const;
+export const EXPERIENCIA_DESCARTE_VALOR = 'Menos de 1 año';
+
+export function experienciaFueraDeRangoElegible(tiempoExperiencia: string): boolean {
+  return tiempoExperiencia === EXPERIENCIA_DESCARTE_VALOR;
+}
+
+/**
+ * Relación con el contacto de Referencia Laboral (Fase 9D, Documento 09
+ * Sección 9). Única fuente de verdad -- ReferenciaLaboralSection.tsx (panel
+ * admin) y ReferenciaLaboralParte2Fields.tsx (KAI-20, /apply/parte2)
+ * reutilizan esta misma lista en vez de cada uno definir la suya.
+ */
+export const REFERENCIA_LABORAL_RELACION_OPTIONS = [
+  'Jefe directo', 'Jefe anterior', 'Recursos Humanos', 'Compañero de trabajo', 'Cliente', 'Proveedor', 'Otro',
+] as const;
+
+/**
  * Ingresos mensuales del fiador (Documento 16 S5, 5 categorías).
  * Redacción "Desde X hasta menos de Y" / "Z o más" (ajustada 2026-08-22):
  * cada cifra límite (2M, 3M, 5M, 10M) pertenece sin ambigüedad a una
@@ -149,9 +172,7 @@ export const ApplicationPayloadSchema = z.object({
   categoria_actividad: z.string().min(2, "Obligatorio").max(15, "Máximo 15 letras").regex(LettersOnly, "Solo se permiten letras").optional(),
 
 
-  anos_experiencia_declarados: z.number()
-    .min(0, "Mínimo 0")
-    .max(60, "Máximo 60 años"),
+  anos_experiencia_declarados: z.enum(TIEMPO_EXPERIENCIA_OPTIONS as unknown as [string, ...string[]], { message: "Selecciona una opción" }),
   licencia_declarada_vigente: z.boolean(),
   licencia_categorias: z.array(z.string()).default([]),
   cantidad_comparendos_declarados: z.number()
@@ -165,8 +186,9 @@ export const ApplicationPayloadSchema = z.object({
   paz_y_salvo_declarado: z.boolean().nullable().optional(),
   acuerdo_pago_declarado: z.boolean().nullable().optional(),
 
-  fiador: GuarantorSchema.nullable(),
-  referencias: z.array(ReferenceSchema).length(2, "Debes incluir exactamente 2 referencias"),
+  // Fiador y Referencias YA NO se piden en la Parte 1 (KAI-9, 2026-08-27) --
+  // se difieren a la Parte 2, después de la entrevista humana. Ver
+  // ApplicationPart2PayloadSchema más abajo.
 
   policyVersion: z.string().min(1, "Debes consultar la Política de Tratamiento de Datos Personales."),
   dataAuthorization: z.literal(true, {
@@ -175,13 +197,6 @@ export const ApplicationPayloadSchema = z.object({
 }).refine(data => data.correo_electronico === data.confirmacion_correo, {
   message: "Los correos electrónicos no coinciden",
   path: ["confirmacion_correo"],
-}).refine(data => {
-  const hasFamiliar = data.referencias.some(r => r.tipo_referencia === 'FAMILIAR');
-  const hasPersonal = data.referencias.some(r => r.tipo_referencia === 'PERSONAL');
-  return hasFamiliar && hasPersonal;
-}, {
-  message: "Debes incluir 1 referencia Familiar y 1 Personal",
-  path: ["referencias"],
 }).refine(data => {
   if (data.tipo_perfil === 'CONDUCTOR_PLATAFORMA') return !!data.plataformas && data.plataformas.length > 0 && !data.categoria_actividad
   return !!data.categoria_actividad && !data.plataformas
@@ -206,6 +221,50 @@ export const ApplicationPayloadSchema = z.object({
 })
 
 export type ApplicationPayload = z.infer<typeof ApplicationPayloadSchema>
+
+/**
+ * Parte 2 de /apply (KAI-9, 2026-08-27): Fiador + Referencias, solo
+ * accesible con el candidato_id + token que RRHH le entrega manualmente
+ * después de la entrevista humana ("Apto, esperando Parte 2"). El mismo
+ * consentimiento de Tratamiento de Datos de la Parte 1 se vuelve a pedir
+ * aquí -- no es un documento nuevo, es el mismo (policyVersion/
+ * dataAuthorization, idéntico patrón).
+ */
+/**
+ * Referencia Laboral -- Sección 1 ("Datos de la referencia"), KAI-20
+ * (2026-08-28): mismas reglas que ya usa el panel admin
+ * (ReferenciaLaboralFullPage.tsx / saveReferenciaLaboral) para estos
+ * mismos 5 campos -- letras 5-33 caracteres para nombre/empresa/cargo,
+ * PHONE_CO para el celular, lista cerrada para la relación.
+ */
+export const ReferenciaLaboralContactoSchema = z.object({
+  contacto_nombre: z.string().min(5, "Obligatorio (mínimo 5 letras)").max(33, "Máximo 33 letras").regex(LettersOnly, "Solo se permiten letras"),
+  contacto_empresa: z.string().min(5, "Obligatorio (mínimo 5 letras)").max(33, "Máximo 33 letras").regex(LettersOnly, "Solo se permiten letras"),
+  contacto_cargo: z.string().min(5, "Obligatorio (mínimo 5 letras)").max(33, "Máximo 33 letras").regex(LettersOnly, "Solo se permiten letras"),
+  contacto_relacion: z.enum(REFERENCIA_LABORAL_RELACION_OPTIONS as unknown as [string, ...string[]], { message: "Selecciona una opción" }),
+  contacto_telefono: z.string().regex(PHONE_CO, "Debe tener 10 números e iniciar en 3"),
+})
+
+export const ApplicationPart2PayloadSchema = z.object({
+  candidato_id: z.string().uuid("Enlace inválido"),
+  token: z.string().uuid("Enlace inválido"),
+  fiador: GuarantorSchema,
+  referencias: z.array(ReferenceSchema).length(2, "Debes incluir exactamente 2 referencias"),
+  referenciaLaboral: ReferenciaLaboralContactoSchema,
+  policyVersion: z.string().min(1, "Debes consultar la Política de Tratamiento de Datos Personales."),
+  dataAuthorization: z.literal(true, {
+    message: "Debes autorizar el tratamiento de tus datos personales.",
+  }),
+}).refine(data => {
+  const hasFamiliar = data.referencias.some(r => r.tipo_referencia === 'FAMILIAR');
+  const hasPersonal = data.referencias.some(r => r.tipo_referencia === 'PERSONAL');
+  return hasFamiliar && hasPersonal;
+}, {
+  message: "Debes incluir 1 referencia Familiar y 1 Personal",
+  path: ["referencias"],
+})
+
+export type ApplicationPart2Payload = z.infer<typeof ApplicationPart2PayloadSchema>
 
 // ==========================================
 // 2. REGLAS DE NEGOCIO Y EVALUACIÓN
@@ -238,16 +297,36 @@ export function evaluateInitialEligibility(data: ApplicationPayload): Eligibilit
   // necesita el número real de SIMIT además de lo declarado. Si no pasa, la
   // postulación nunca llega a este punto (mismo patrón de descarte
   // silencioso que el filtro de edad, Fase 17).
-  if (!data.fiador) razones.push("FIADOR_NO_PROPORCIONADO")
-  // Fase 17: la finca raíz del fiador reemplaza el requisito de ingreso --
-  // cualquiera de las dos condiciones alcanza, ya no solo el ingreso.
-  else if (!data.fiador.tiene_finca_raiz && !INGRESOS_PASS.has(data.fiador.ingresos_mensuales_aprox)) razones.push("FIADOR_INGRESOS_INSUFICIENTES")
+  //
+  // El chequeo de calidad del fiador (ingresos/finca raíz) YA NO vive aquí
+  // desde KAI-9 (2026-08-27) -- el fiador ya no se pide en la Parte 1. Se
+  // movió a evaluatePart2Eligibility, y además dejó de ser un descarte
+  // automático: ahora es informativo (fiador_calificacion_automatica),
+  // igual que licencia/antecedentes judiciales (Fase 19) -- RRHH decide,
+  // el sistema ya no descarta solo.
 
   if (razones.length > 0) {
     return { estado: 'DESCARTADO', razones }
   }
 
   return { estado: 'REVISION_PRELIMINAR', razones: [] }
+}
+
+export type FiadorCalificacionAutomatica = 'CUMPLE' | 'NO_CUMPLE'
+
+/**
+ * Chequeo de calidad del fiador (KAI-9, 2026-08-27): movido desde
+ * evaluateInitialEligibility, donde antes descartaba automáticamente en
+ * la Parte 1. Ahora corre al recibir la Parte 2 y es puramente
+ * INFORMATIVO -- alimenta candidatos.fiador_calificacion_automatica, no
+ * descarta a nadie por sí solo (RRHH decide, mismo patrón que
+ * licencia_verificada_admin / antecedentes_judiciales_estado, Fase 19).
+ * Misma regla de negocio de siempre (Fase 17): finca raíz reemplaza el
+ * requisito de ingreso -- cualquiera de las dos alcanza.
+ */
+export function evaluatePart2Eligibility(fiador: { tiene_finca_raiz: boolean, ingresos_mensuales_aprox: string }): FiadorCalificacionAutomatica {
+  const cumple = fiador.tiene_finca_raiz || INGRESOS_PASS.has(fiador.ingresos_mensuales_aprox)
+  return cumple ? 'CUMPLE' : 'NO_CUMPLE'
 }
 
 export type ComparendosFilterResult = {
@@ -435,14 +514,15 @@ export function evaluacionAvanzadaCompleta(evaluacionRaw: EvaluacionAvanzada | E
 }
 
 /**
- * Completitud de la visita domiciliaria (Fase 19, 2026-08-25). Debe
- * coincidir exactamente con la validación en la RPC
- * bulk_change_candidate_status (misma condición: realizada = true Y
- * calificación no nula -- las observaciones obligatorias cuando la
- * calificación es "Apto con reserva" ya las exige el CHECK de la propia
- * tabla, así que no hace falta repetir esa parte aquí). Función aparte de
- * `evaluacionAvanzadaCompleta` porque en la RPC también es una
- * precondición aparte (bloque `IF` propio), no parte del mismo chequeo.
+ * Completitud de la visita domiciliaria (Fase 19, 2026-08-25): solo
+ * verifica que esté REGISTRADA (realizada = true y con alguna
+ * calificación) -- no dice nada sobre si esa calificación permite avanzar
+ * a SELECCIONADO. Para eso ver `visitaDomiciliariaEsNoApta` más abajo
+ * (regla agregada 2026-08-28, migración 00055): "No Apto" bloquea con un
+ * mensaje propio y distinto del genérico "aún no está calificada" que
+ * cubre esta función. Función aparte de `evaluacionAvanzadaCompleta`
+ * porque en la RPC también es una precondición aparte (bloque `IF`
+ * propio), no parte del mismo chequeo.
  */
 type VisitaDomiciliaria = {
   visita_domiciliaria_realizada: boolean | null
@@ -455,4 +535,18 @@ export function visitaDomiciliariaCompleta(evaluacionRaw: VisitaDomiciliaria | V
   if (evaluacion.visita_domiciliaria_realizada !== true) return false
   if (!evaluacion.visita_domiciliaria_calificacion) return false
   return true
+}
+
+/**
+ * Regla de negocio agregada el 2026-08-28 (migración 00055): un candidato
+ * cuya visita domiciliaria fue calificada "No Apto" no puede pasar a
+ * SELECCIONADO -- antes, cualquier calificación (incluida "No Apto")
+ * pasaba el chequeo de `visitaDomiciliariaCompleta` por igual, ya que esa
+ * función solo exige que exista una calificación, sin importar cuál.
+ * Debe coincidir exactamente con la autoridad real en
+ * bulk_change_candidate_status (PostgreSQL).
+ */
+export function visitaDomiciliariaEsNoApta(evaluacionRaw: VisitaDomiciliaria | VisitaDomiciliaria[] | null | undefined): boolean {
+  const evaluacion = Array.isArray(evaluacionRaw) ? evaluacionRaw[0] : evaluacionRaw
+  return evaluacion?.visita_domiciliaria_calificacion === 'NO_APTO'
 }

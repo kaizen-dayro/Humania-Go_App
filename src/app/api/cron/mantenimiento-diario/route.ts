@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendCandidateEmail, sendAdminEmail } from '@/lib/services/email'
+import { sendCandidateEmail, sendPlainEmail } from '@/lib/services/email'
 import { sendWhatsAppNotification } from '@/lib/services/whatsapp'
 
 // Tarea programada diaria (ver web/vercel.json) -- deliberadamente UNA
@@ -90,6 +90,75 @@ async function procesarDescartesEdad() {
 
   if (errAnon) {
     console.error('[CRON diario] Error anonimizando registros (edad):', errAnon)
+  } else {
+    resultado.anonimizados = anonimizados?.length || 0
+  }
+
+  return resultado
+}
+
+/**
+ * Descarte silencioso por tiempo de experiencia (KAI-22, 2026-08-28):
+ * mismo patrón exacto que procesarDescartesEdad -- correo de
+ * agradecimiento a las 48h, anonimización a los 3 meses.
+ */
+async function procesarDescartesExperiencia() {
+  const resultado = { correosEnviados: 0, correosFallidos: 0, anonimizados: 0 }
+
+  const limiteCorreo = new Date(Date.now() - HORAS_48_MS).toISOString()
+  const { data: pendientesCorreo, error: errPendientes } = await supabaseAdmin
+    .from('candidatos_descartados_por_experiencia')
+    .select('id, nombres, correo_electronico')
+    .lte('creado_en', limiteCorreo)
+    .is('correo_agradecimiento_enviado_en', null)
+    .not('correo_electronico', 'is', null)
+
+  if (errPendientes) {
+    console.error('[CRON diario] Error consultando pendientes de correo (experiencia):', errPendientes)
+  } else {
+    for (const fila of pendientesCorreo || []) {
+      const { data: reservado } = await supabaseAdmin
+        .from('candidatos_descartados_por_experiencia')
+        .update({ correo_agradecimiento_enviado_en: new Date().toISOString() })
+        .eq('id', fila.id)
+        .is('correo_agradecimiento_enviado_en', null)
+        .select('id')
+        .maybeSingle()
+
+      if (!reservado) continue
+
+      const enviado = await sendCandidateEmail({
+        to: fila.correo_electronico!,
+        subject: 'Humania Go — Gracias por tu interés',
+        eventType: 'DESCARTE_EXPERIENCIA_AGRADECIMIENTO',
+        html: `
+          <div style="font-family: Arial, sans-serif; color: #2F3437; line-height: 1.6;">
+            <h2>Hola, ${fila.nombres || ''}.</h2>
+            <p>Gracias por tomarte el tiempo de conocer más sobre Humania Go y por tu interés en nuestra oportunidad de movilidad.</p>
+            <p>En este momento, tu perfil no cumple con los requisitos que tenemos definidos para esta convocatoria. Te invitamos a estar atento a futuras oportunidades, ya que las condiciones de nuestras convocatorias pueden cambiar con el tiempo.</p>
+            <br>
+            <p>Gracias por confiar en Humania Go.</p>
+            <br>
+            <p><strong>Equipo Humano</strong><br>Humania Go</p>
+          </div>
+        `
+      })
+
+      if (enviado) resultado.correosEnviados++
+      else resultado.correosFallidos++
+    }
+  }
+
+  const limiteAnonimizacion = new Date(Date.now() - TRES_MESES_MS).toISOString()
+  const { data: anonimizados, error: errAnon } = await supabaseAdmin
+    .from('candidatos_descartados_por_experiencia')
+    .update({ nombres: null, correo_electronico: null, anonimizado_en: new Date().toISOString() })
+    .lte('creado_en', limiteAnonimizacion)
+    .not('correo_electronico', 'is', null)
+    .select('id')
+
+  if (errAnon) {
+    console.error('[CRON diario] Error anonimizando registros (experiencia):', errAnon)
   } else {
     resultado.anonimizados = anonimizados?.length || 0
   }
@@ -206,7 +275,7 @@ function umbralParaDias(dias: number): Umbral | null {
  * filas nuevas, no actualizamos filas existentes).
  */
 async function procesarAlertasVencimientoDocumentos() {
-  const resultado = { alertasNuevas: 0, correosEnviados: 0, correosFallidos: 0, whatsappIntentados: 0 }
+  const resultado = { alertasNuevas: 0, correosEnviados: 0, correosFallidos: 0, whatsappIntentados: 0, correosCandidatoEnviados: 0, correosCandidatoFallidos: 0 }
 
   const hoy = new Date()
   const hoyUTC = Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
@@ -221,7 +290,7 @@ async function procesarAlertasVencimientoDocumentos() {
     return resultado
   }
 
-  type ItemNuevo = { activo: string, documento: string, umbral: Umbral, fecha: string, dias: number }
+  type ItemNuevo = { notificacionId: string, activoId: string, activo: string, documento: string, umbral: Umbral, fecha: string, dias: number }
   const nuevos: ItemNuevo[] = []
 
   for (const activo of activos || []) {
@@ -257,6 +326,8 @@ async function procesarAlertasVencimientoDocumentos() {
 
       resultado.alertasNuevas++
       nuevos.push({
+        notificacionId: insertado.id,
+        activoId: activo.id,
         activo: activo.placa || activo.codigo_interno || activo.id,
         documento: LABEL_DOCUMENTO[doc.tipo],
         umbral,
@@ -314,7 +385,7 @@ async function procesarAlertasVencimientoDocumentos() {
     const correo = userData?.user?.email
     if (!correo) continue
 
-    const enviado = await sendAdminEmail(correo, `Humania Go — ${nuevos.length} documento(s) de activos por vencer`, html)
+    const enviado = await sendPlainEmail(correo, `Humania Go — ${nuevos.length} documento(s) de activos por vencer`, html)
     if (enviado) resultado.correosEnviados++
     else resultado.correosFallidos++
 
@@ -327,15 +398,76 @@ async function procesarAlertasVencimientoDocumentos() {
     await sendWhatsAppNotification('PENDIENTE_CONFIGURAR', `${nuevos.length} documento(s) de activos de Humania Go requieren atención.`)
   }
 
+  // Fase 22 (KAI-5, 2026-08-27): además del resumen a administradores,
+  // avisar también al candidato SELECCIONADO+ACTIVO asignado a cada
+  // activo con alertas nuevas -- un solo correo por activo (no uno por
+  // documento), listando solo los documentos de ESE activo. Reutiliza
+  // sendPlainEmail (no sendCandidateEmail) porque la idempotencia real ya
+  // la da activo_documento_notificaciones -- candidate_email_events exige
+  // UNIQUE(candidate_id, event_type), que bloquearía para siempre un
+  // segundo aviso al mismo candidato si su vehículo vuelve a tener un
+  // documento por vencer más adelante.
+  const activoIdsConAlertas = [...new Set(nuevos.map(n => n.activoId))]
+
+  for (const activoId of activoIdsConAlertas) {
+    const itemsDelActivo = nuevos.filter(n => n.activoId === activoId)
+
+    const { data: candidato, error: errCandidato } = await supabaseAdmin
+      .from('candidatos')
+      .select('id, nombres, correo_electronico')
+      .eq('activo_id', activoId)
+      .eq('estado', 'SELECCIONADO')
+      .eq('estatus_contractual', 'ACTIVO')
+      .maybeSingle()
+
+    if (errCandidato) {
+      console.error('[CRON diario] Error consultando candidato asignado al activo:', activoId, errCandidato)
+      continue
+    }
+    if (!candidato || !candidato.correo_electronico) continue
+
+    const listaDocumentos = itemsDelActivo
+      .sort((a, b) => a.dias - b.dias)
+      .map(n => `<li>${n.documento}: ${LABEL_UMBRAL[n.umbral]} (${n.fecha})</li>`)
+      .join('')
+
+    const htmlCandidato = `
+      <div style="font-family: Arial, sans-serif; color: #2F3437; line-height: 1.6;">
+        <p>Hola, ${candidato.nombres || ''}.</p>
+        <p>Te escribimos para informarte que el/los siguiente(s) documento(s) de tu vehículo asignado requiere(n) atención:</p>
+        <ul>${listaDocumentos}</ul>
+        <p>Por favor comunícate con nuestro equipo para coordinar la renovación correspondiente.</p>
+        <br>
+        <p>Gracias por confiar en Humania Go.</p>
+      </div>
+    `
+
+    const enviadoCandidato = await sendPlainEmail(candidato.correo_electronico, 'Humania Go — Documento de tu vehículo por vencer', htmlCandidato)
+
+    if (enviadoCandidato) {
+      resultado.correosCandidatoEnviados++
+      const { error: errMarcar } = await supabaseAdmin
+        .from('activo_documento_notificaciones')
+        .update({ candidato_email_enviado_en: new Date().toISOString() })
+        .in('id', itemsDelActivo.map(n => n.notificacionId))
+      if (errMarcar) {
+        console.error('[CRON diario] Error marcando candidato_email_enviado_en:', activoId, errMarcar)
+      }
+    } else {
+      resultado.correosCandidatoFallidos++
+    }
+  }
+
   return resultado
 }
 
 export async function GET() {
-  const [edad, comparendos, vencimientos] = await Promise.all([
+  const [edad, comparendos, experiencia, vencimientos] = await Promise.all([
     procesarDescartesEdad(),
     procesarDescartesComparendos(),
+    procesarDescartesExperiencia(),
     procesarAlertasVencimientoDocumentos(),
   ])
 
-  return NextResponse.json({ success: true, edad, comparendos, vencimientos })
+  return NextResponse.json({ success: true, edad, comparendos, experiencia, vencimientos })
 }

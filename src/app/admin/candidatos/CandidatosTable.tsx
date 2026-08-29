@@ -347,6 +347,17 @@ export function CandidatosTable({
 
       {/* Celular: tarjetas apiladas en vez de la tabla -- misma información, sin scroll horizontal. */}
       <div className="md:hidden space-y-3">
+        {filteredCandidatos.length > 0 && (
+          <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm border border-neutral-200 p-3">
+            <Checkbox
+              checked={todosSeleccionados}
+              indeterminate={algunosSeleccionados}
+              onCheckedChange={toggleSelectAll}
+              aria-label="Seleccionar todos los candidatos del resultado actual"
+            />
+            <span className="text-sm text-humania-gray">Seleccionar todos ({filteredCandidatos.length})</span>
+          </div>
+        )}
         {filteredCandidatos?.map((c) => (
           <div key={c.id} className="bg-white rounded-lg shadow-sm border border-neutral-200 p-4 space-y-2">
             <div className="flex items-start justify-between gap-2">

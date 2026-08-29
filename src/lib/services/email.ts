@@ -9,7 +9,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false }
 });
 
-export type EmailEventType = 'APPLICATION_RECEIVED' | 'INTERVIEW_INVITATION' | 'APPLICATION_REJECTED' | 'FINAL_SELECTION' | 'BACKUP_WAITLIST' | 'DESCARTE_EDAD_AGRADECIMIENTO' | 'DESCARTE_COMPARENDOS_AGRADECIMIENTO';
+export type EmailEventType = 'APPLICATION_RECEIVED' | 'INTERVIEW_INVITATION' | 'APPLICATION_REJECTED' | 'FINAL_SELECTION' | 'BACKUP_WAITLIST' | 'DESCARTE_EDAD_AGRADECIMIENTO' | 'DESCARTE_COMPARENDOS_AGRADECIMIENTO' | 'DESCARTE_EXPERIENCIA_AGRADECIMIENTO';
 
 interface SendEmailOptions {
   // Opcional (Fase 17): un descarte por edad nunca llega a crear un
@@ -62,13 +62,15 @@ async function enviarCorreoReal(to: string, subject: string, html: string): Prom
 }
 
 /**
- * Correo a un administrador (Fase 21, 2026-08-26): sin idempotencia vía
- * `candidate_email_events` (esa tabla es de candidatos, no de admins) --
- * quien llama a esta función es responsable de su propia idempotencia si
- * la necesita (ver el cron de vencimiento de documentos, que la resuelve
- * con `activo_documento_notificaciones`).
+ * Correo sin idempotencia propia (Fase 21, 2026-08-26; renombrado en la
+ * Fase 22/KAI-5 al dejar de ser exclusivo de administradores): no pasa
+ * por `candidate_email_events` -- quien llama a esta función es
+ * responsable de su propia idempotencia si la necesita (ver el cron de
+ * vencimiento de documentos, que la resuelve con
+ * `activo_documento_notificaciones` tanto para el resumen de
+ * administradores como para el aviso al candidato asignado).
  */
-export async function sendAdminEmail(to: string, subject: string, html: string): Promise<boolean> {
+export async function sendPlainEmail(to: string, subject: string, html: string): Promise<boolean> {
   const { status } = await enviarCorreoReal(to, subject, html);
   return status === 'SENT';
 }

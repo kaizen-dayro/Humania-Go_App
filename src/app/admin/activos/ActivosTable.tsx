@@ -35,11 +35,16 @@ type ActivoVencimientos = {
   vencimiento_impuestos: string | null
 }
 
-function AlertaDocumentos({ activo }: { activo: ActivoVencimientos }) {
-  const documentos = construirDocumentos(activo).filter(d => d.fecha)
-  const conProblema = documentos
+/** Documentos de un activo cuyo estado no es OK ni SIN_REGISTRAR -- es decir, próximos a vencer o ya vencidos. */
+function documentosConProblema(activo: ActivoVencimientos) {
+  return construirDocumentos(activo)
+    .filter(d => d.fecha)
     .map(d => ({ ...d, estado: evaluarVencimiento(d.fecha) }))
     .filter(d => d.estado === 'PROXIMO' || d.estado === 'URGENTE' || d.estado === 'VENCIDO')
+}
+
+function AlertaDocumentos({ activo }: { activo: ActivoVencimientos }) {
+  const conProblema = documentosConProblema(activo)
 
   if (conProblema.length === 0) return null
 
@@ -77,6 +82,11 @@ export function ActivosTable({ activos }: { activos: any[] }) {
   const [search, setSearch] = useState(searchParams.get('q') || '')
   const [tipo, setTipo] = useState(searchParams.get('tipo') || '')
   const [estado, setEstado] = useState(searchParams.get('estado') || '')
+  // Fase 21 (extensión, 27 de agosto de 2026): filtro "solo documentos por
+  // vencer/vencidos" -- pedido de QA para que la tarjeta del Dashboard
+  // pueda enlazar directo a la lista ya filtrada, en vez de a la vista
+  // completa sin filtrar (poco útil si hay muchos activos).
+  const [soloVencimientos, setSoloVencimientos] = useState(searchParams.get('vencimientos') === '1')
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -86,11 +96,12 @@ export function ActivosTable({ activos }: { activos: any[] }) {
       if (search.trim()) params.set('q', search.trim())
       if (tipo) params.set('tipo', tipo)
       if (estado) params.set('estado', estado)
+      if (soloVencimientos) params.set('vencimientos', '1')
       const qs = params.toString()
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
     }, 300)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [search, tipo, estado, pathname, router])
+  }, [search, tipo, estado, soloVencimientos, pathname, router])
 
   const tiposDisponibles = useMemo(() => {
     const set = new Set<string>()
@@ -128,11 +139,12 @@ export function ActivosTable({ activos }: { activos: any[] }) {
       }
       if (tipo && modelo?.tipos_vehiculo?.nombre !== tipo) return false
       if (estado && a.estado !== estado) return false
+      if (soloVencimientos && documentosConProblema(a).length === 0) return false
       return true
     })
-  }, [activos, search, tipo, estado])
+  }, [activos, search, tipo, estado, soloVencimientos])
 
-  const hayFiltrosActivos = !!(search.trim() || tipo || estado)
+  const hayFiltrosActivos = !!(search.trim() || tipo || estado || soloVencimientos)
 
   return (
     <div className="space-y-4">
@@ -159,12 +171,24 @@ export function ActivosTable({ activos }: { activos: any[] }) {
           <option value="">Estado: Todos</option>
           {Object.entries(ESTADOS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
         </select>
+        <button
+          type="button"
+          onClick={() => setSoloVencimientos(v => !v)}
+          className={`h-10 px-3 text-sm rounded-none border flex items-center gap-2 transition-colors ${
+            soloVencimientos
+              ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold'
+              : 'border-neutral-300 bg-white text-humania-gray hover:border-orange-300'
+          }`}
+        >
+          <AlertTriangle className="w-4 h-4" />
+          Solo documentos por vencer
+        </button>
         {hayFiltrosActivos && (
           <>
             <span className="text-xs text-humania-gray/70">
               {filteredActivos.length} resultado{filteredActivos.length === 1 ? '' : 's'} encontrado{filteredActivos.length === 1 ? '' : 's'}
             </span>
-            <Button type="button" variant="ghost" size="sm" onClick={() => { setSearch(''); setTipo(''); setEstado('') }}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setSearch(''); setTipo(''); setEstado(''); setSoloVencimientos(false) }}>
               Limpiar filtros
             </Button>
           </>
