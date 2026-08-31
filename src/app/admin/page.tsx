@@ -45,6 +45,7 @@ export default async function AdminDashboard() {
     { count: candidatosRevision },
     { count: candidatosFinalistas },
     { count: descartadosPorEdad },
+    { count: descartadosPorExperiencia },
     { count: descartadosPorComparendos },
     { count: activosConDocumentosPorVencer }
   ] = await Promise.all([
@@ -54,6 +55,7 @@ export default async function AdminDashboard() {
     supabase.from('candidatos').select('*', { count: 'exact', head: true }).eq('estado', 'REVISION_PRELIMINAR'),
     supabase.from('candidatos').select('*', { count: 'exact', head: true }).in('estado', ['SELECCIONADO', 'EN_ESPERA']),
     supabase.from('candidatos_descartados_por_edad').select('*', { count: 'exact', head: true }),
+    supabase.from('candidatos_descartados_por_experiencia').select('*', { count: 'exact', head: true }),
     esSuperAdmin
       ? supabase.from('candidatos_descartados_por_comparendos').select('*', { count: 'exact', head: true })
       : Promise.resolve({ count: null }),
@@ -136,6 +138,18 @@ export default async function AdminDashboard() {
           <div>
             <p className="text-4xl font-bold text-humania-blue">{descartadosPorEdad || 0}</p>
             <p className="text-xs text-humania-gray mt-2 font-medium">Fuera del rango de edad elegible</p>
+          </div>
+        </div>
+
+        {/* KPI: Descartados por Experiencia (KAI-26) */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-neutral-200 flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="text-sm font-bold text-humania-gray/50 uppercase tracking-widest">Descartados (Experiencia)</h3>
+            <UserX className="w-5 h-5 text-humania-blue/30" />
+          </div>
+          <div>
+            <p className="text-4xl font-bold text-humania-blue">{descartadosPorExperiencia || 0}</p>
+            <p className="text-xs text-humania-gray mt-2 font-medium">Menos de 1 año de experiencia declarada</p>
           </div>
         </div>
       </div>
