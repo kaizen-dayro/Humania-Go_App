@@ -6,6 +6,7 @@ import { evaluateCandidateRequirements, evaluacionAvanzadaCompleta, visitaDomici
 import { CheckCircle2, XCircle, AlertTriangle, HelpCircle } from 'lucide-react'
 import { CandidateActions } from './CandidateActions'
 import { EvaluacionForm } from './EvaluacionForm'
+import { IndiceSER } from './IndiceSER'
 import { LicenciaVerificacionForm } from './LicenciaVerificacionForm'
 import { AntecedentesJudicialesForm } from './AntecedentesJudicialesForm'
 import { Parte2Form } from './Parte2Form'
@@ -417,6 +418,7 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
               <p className="text-sm text-humania-gray mb-6">
                 Esta información complementaria debe ser registrada por el equipo humano durante o después de la entrevista para apoyar la decisión final.
               </p>
+              <IndiceSER evaluacion={candidato.candidatos_evaluacion} referenciaLaboral={referenciaLaboral} />
               <EvaluacionForm candidatoId={candidato.id} existingData={candidato.candidatos_evaluacion} />
             </CollapsibleCard>
           )}

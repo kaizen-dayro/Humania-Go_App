@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { saveCandidatoEvaluacion } from '@/app/admin/actions'
 import { LETTERS_WITH_PUNCTUATION, capitalizarPalabras } from '@/lib/validation'
+import { TIPO_VIVIENDA_OPTIONS } from '@/lib/domain/indiceSer'
 
 export function EvaluacionForm({ candidatoId, existingData }: { candidatoId: string, existingData?: any }) {
   const [loading, setLoading] = useState(false)
@@ -20,6 +21,9 @@ export function EvaluacionForm({ candidatoId, existingData }: { candidatoId: str
     tiene_hijos: existingData?.tiene_hijos === true ? 'true' : existingData?.tiene_hijos === false ? 'false' : '',
     cantidad_hijos: existingData?.cantidad_hijos?.toString() || '',
     con_quien_vive: existingData?.con_quien_vive || '',
+    // KAI-27: dato contextual, sin efecto en el Índice SER ni en ningún
+    // cálculo automático (ver Documentos/SDD/indice-ser-entrevista/spec.md).
+    tipo_vivienda: existingData?.tipo_vivienda || '',
     tiene_conyuge: existingData?.tiene_conyuge === true ? 'true' : existingData?.tiene_conyuge === false ? 'false' : '',
     tiene_hermanos: existingData?.tiene_hermanos === true ? 'true' : existingData?.tiene_hermanos === false ? 'false' : '',
     cantidad_hermanos: existingData?.cantidad_hermanos?.toString() || '',
@@ -28,7 +32,11 @@ export function EvaluacionForm({ candidatoId, existingData }: { candidatoId: str
     // Fase 19 (2026-08-25): visita domiciliaria.
     visita_domiciliaria_realizada: existingData?.visita_domiciliaria_realizada === true ? 'true' : existingData?.visita_domiciliaria_realizada === false ? 'false' : '',
     visita_domiciliaria_calificacion: existingData?.visita_domiciliaria_calificacion || '',
-    visita_domiciliaria_observaciones: existingData?.visita_domiciliaria_observaciones || ''
+    visita_domiciliaria_observaciones: existingData?.visita_domiciliaria_observaciones || '',
+    // KAI-27: preguntas abiertas del Índice SER -- texto libre, sin
+    // calificación automática por IA.
+    ser_situacion_dificil_respuesta: existingData?.ser_situacion_dificil_respuesta || '',
+    ser_manejo_compromiso_respuesta: existingData?.ser_manejo_compromiso_respuesta || ''
   })
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -40,6 +48,16 @@ export function EvaluacionForm({ candidatoId, existingData }: { candidatoId: str
     const input = e.target
     const cursorPos = input.selectionStart
     setFormData(prev => ({ ...prev, visita_domiciliaria_observaciones: capitalizarPalabras(input.value) }))
+    requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
+  }
+
+  // KAI-27: mismo patrón de filtro en tiempo real que las observaciones
+  // de visita domiciliaria, para las dos preguntas abiertas del Índice SER.
+  const handleSerTextChange = (field: 'ser_situacion_dificil_respuesta' | 'ser_manejo_compromiso_respuesta') => (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (!LETTERS_WITH_PUNCTUATION.test(e.target.value)) return
+    const input = e.target
+    const cursorPos = input.selectionStart
+    setFormData(prev => ({ ...prev, [field]: capitalizarPalabras(input.value) }))
     requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
   }
 
@@ -56,6 +74,17 @@ export function EvaluacionForm({ candidatoId, existingData }: { candidatoId: str
       formData.visita_domiciliaria_observaciones.trim().length < 10
     ) {
       setMessage('Las observaciones de "Apto con reserva" deben tener al menos 10 caracteres.')
+      return
+    }
+    // KAI-27: las dos preguntas del Índice SER son opcionales, pero si se
+    // escribe algo, debe tener al menos 10 caracteres (mismo mínimo que
+    // el resto de campos narrativos del proyecto).
+    if (formData.ser_situacion_dificil_respuesta.trim().length > 0 && formData.ser_situacion_dificil_respuesta.trim().length < 10) {
+      setMessage('La respuesta sobre la situación difícil debe tener al menos 10 caracteres, o dejarse vacía.')
+      return
+    }
+    if (formData.ser_manejo_compromiso_respuesta.trim().length > 0 && formData.ser_manejo_compromiso_respuesta.trim().length < 10) {
+      setMessage('La respuesta sobre el manejo del compromiso debe tener al menos 10 caracteres, o dejarse vacía.')
       return
     }
     setLoading(true)
@@ -126,6 +155,18 @@ export function EvaluacionForm({ candidatoId, existingData }: { candidatoId: str
               <SelectItem value="Con pareja e hijos">Con pareja e hijos</SelectItem>
               <SelectItem value="Con otros familiares">Con otros familiares</SelectItem>
               <SelectItem value="Otro">Otro</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-humania-gray font-medium">¿La vivienda donde vive actualmente es?</Label>
+          <Select value={formData.tipo_vivienda} onValueChange={(v) => handleSelectChange('tipo_vivienda', v)}>
+            <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+            <SelectContent>
+              {TIPO_VIVIENDA_OPTIONS.map((opcion) => (
+                <SelectItem key={opcion} value={opcion}>{opcion}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -219,6 +260,39 @@ export function EvaluacionForm({ candidatoId, existingData }: { candidatoId: str
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
           El candidato no puede pasar a &quot;Seleccionado&quot; sin que la visita domiciliaria esté realizada y calificada por completo. Sí puede pasar a Backup, Desiste o Descartado sin este requisito.
         </p>
+      </div>
+
+      <div className="border-t pt-6 space-y-6">
+        <div>
+          <h4 className="text-sm font-bold text-humania-gray/50 tracking-widest uppercase mb-1">Índice SER — Preguntas Adicionales</h4>
+          <p className="text-xs text-humania-gray mb-4">
+            Respuestas cualitativas para evaluación humana. No se califican automáticamente. Ambas son opcionales.
+          </p>
+
+          <div className="space-y-2">
+            <Label className="text-humania-gray font-medium">¿Cuéntanos sobre una situación en la que hayas cometido un error o hayas tenido un problema importante y qué hiciste para solucionarlo?</Label>
+            <Textarea
+              value={formData.ser_situacion_dificil_respuesta}
+              onChange={handleSerTextChange('ser_situacion_dificil_respuesta')}
+              placeholder="Respuesta del candidato durante la entrevista... (mínimo 10 caracteres si se completa)"
+              maxLength={600}
+              rows={3}
+            />
+            <p className="text-xs text-neutral-400 text-right">{formData.ser_situacion_dificil_respuesta.length}/600</p>
+          </div>
+
+          <div className="space-y-2 mt-4">
+            <Label className="text-humania-gray font-medium">Cuando asumes un compromiso y aparece una dificultad que puede impedirte cumplirlo, ¿qué haces?</Label>
+            <Textarea
+              value={formData.ser_manejo_compromiso_respuesta}
+              onChange={handleSerTextChange('ser_manejo_compromiso_respuesta')}
+              placeholder="Respuesta del candidato durante la entrevista... (mínimo 10 caracteres si se completa)"
+              maxLength={600}
+              rows={3}
+            />
+            <p className="text-xs text-neutral-400 text-right">{formData.ser_manejo_compromiso_respuesta.length}/600</p>
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center gap-4 border-t pt-6">

@@ -618,6 +618,9 @@ export async function saveCandidatoEvaluacion(candidatoId: string, data: any) {
     tiene_hijos: data.tiene_hijos === 'true' ? true : data.tiene_hijos === 'false' ? false : null,
     cantidad_hijos: data.cantidad_hijos ? parseInt(data.cantidad_hijos) : null,
     con_quien_vive: data.con_quien_vive || null,
+    // KAI-27: dato contextual, sin efecto en el Índice SER ni en ningún
+    // cálculo automático de estado/selección/descarte.
+    tipo_vivienda: data.tipo_vivienda || null,
     tiene_conyuge: data.tiene_conyuge === 'true' ? true : data.tiene_conyuge === 'false' ? false : null,
     tiene_hermanos: data.tiene_hermanos === 'true' ? true : data.tiene_hermanos === 'false' ? false : null,
     cantidad_hermanos: data.cantidad_hermanos ? parseInt(data.cantidad_hermanos) : null,
@@ -634,6 +637,10 @@ export async function saveCandidatoEvaluacion(candidatoId: string, data: any) {
     visita_domiciliaria_observaciones: data.visita_domiciliaria_realizada === 'true' && data.visita_domiciliaria_calificacion === 'APTO_CON_RESERVA' ? (data.visita_domiciliaria_observaciones || null) : null,
     visita_domiciliaria_verificado_por: data.visita_domiciliaria_realizada === 'true' ? session.user.id : null,
     visita_domiciliaria_verificado_en: data.visita_domiciliaria_realizada === 'true' ? new Date().toISOString() : null,
+    // KAI-27: preguntas abiertas del Índice SER -- texto libre, opcional,
+    // sin calificación automática por IA.
+    ser_situacion_dificil_respuesta: data.ser_situacion_dificil_respuesta?.trim() ? data.ser_situacion_dificil_respuesta : null,
+    ser_manejo_compromiso_respuesta: data.ser_manejo_compromiso_respuesta?.trim() ? data.ser_manejo_compromiso_respuesta : null,
     updated_at: new Date().toISOString()
   }
 
