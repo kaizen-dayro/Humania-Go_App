@@ -372,7 +372,11 @@ export async function updateAsset(activoId: string, formData: FormData) {
     return { success: false, error: 'Permisos insuficientes' }
   }
 
-  // 2.1 Consultar estado actual: ASIGNADO/TRANSFERIDO bloquean toda edición de información
+  // 2.1 Consultar estado actual: ASIGNADO/TRANSFERIDO bloquean la edición
+  // de placa/color/estado, pero (KAI-28) permiten actualizar las 3 fechas
+  // de vencimiento y el estado físico -- datos que cambian durante la
+  // vida del contrato. El trigger check_activo_edicion_bloqueada (00058)
+  // es la autoridad real; esto es la capa de mensaje temprano.
   const { data: activoActual, error: fetchErr } = await supabase
     .from('activos')
     .select('estado')
@@ -382,23 +386,50 @@ export async function updateAsset(activoId: string, formData: FormData) {
   if (fetchErr || !activoActual) {
     return { success: false, error: 'Activo no encontrado' }
   }
-  if (activoActual.estado === 'ASIGNADO' || activoActual.estado === 'TRANSFERIDO') {
-    return { success: false, error: `Este activo está ${activoActual.estado} y su información no puede editarse desde este flujo.` }
-  }
 
-  const estado = formData.get('estado') as string
-  const placa = formData.get('placa') as string
-  const color = formData.get('color') as string
   const vencimiento_tecnomecanica = formData.get('vencimiento_tecnomecanica') as string
   const vencimiento_soat = formData.get('vencimiento_soat') as string
   const vencimiento_impuestos = formData.get('vencimiento_impuestos') as string
   const estado_fisico = formData.get('estado_fisico') as string
 
-  if (!estado || !estado_fisico?.trim()) {
-    return { success: false, error: 'Faltan campos obligatorios (Estado y Estado Físico son obligatorios)' }
+  if (!estado_fisico?.trim()) {
+    return { success: false, error: 'Faltan campos obligatorios (Estado Físico es obligatorio)' }
   }
   if (!esTextoValido(estado_fisico, LETTERS_WITH_PUNCTUATION, 10, 111)) {
     return { success: false, error: 'El Estado Físico debe tener entre 10 y 111 caracteres (letras, espacios y puntuación básica).' }
+  }
+
+  if (activoActual.estado === 'ASIGNADO' || activoActual.estado === 'TRANSFERIDO') {
+    // KAI-28: modo de edición parcial -- únicamente estos 4 campos.
+    // Un .update() con objeto parcial no toca placa/color/estado, que
+    // quedan automáticamente iguales a su valor actual.
+    const { error } = await supabase
+      .from('activos')
+      .update({
+        vencimiento_tecnomecanica: vencimiento_tecnomecanica || null,
+        vencimiento_soat: vencimiento_soat || null,
+        vencimiento_impuestos: vencimiento_impuestos || null,
+        estado_fisico: estado_fisico.trim()
+      })
+      .eq('id', activoId)
+
+    if (error) {
+      console.error('Error actualizando activo (modo bloqueado):', error)
+      return { success: false, error: 'Error interno de base de datos' }
+    }
+
+    revalidatePath('/admin/activos')
+    revalidatePath('/admin')
+    revalidatePath('/')
+    return { success: true }
+  }
+
+  const estado = formData.get('estado') as string
+  const placa = formData.get('placa') as string
+  const color = formData.get('color') as string
+
+  if (!estado) {
+    return { success: false, error: 'Faltan campos obligatorios (Estado es obligatorio)' }
   }
   if (estado === 'ASIGNADO' || estado === 'TRANSFERIDO') {
     return { success: false, error: 'ASIGNADO y TRANSFERIDO solo pueden establecerse desde el flujo contractual del candidato.' }
@@ -432,7 +463,7 @@ export async function updateAsset(activoId: string, formData: FormData) {
   revalidatePath('/admin/activos')
   revalidatePath('/admin')
   revalidatePath('/') // Landing page para que refresque oportunidades
-  
+
   return { success: true }
 }
 
