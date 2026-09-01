@@ -240,13 +240,11 @@ export function ActivosTable({ activos }: { activos: any[] }) {
                     <AlertaDocumentos activo={activo} />
                   </TableCell>
                   <TableCell className="text-right">
-                    {activo.estado === 'TRANSFERIDO' ? null : (
-                      <Link href={`/admin/activos/${activo.id}/editar`}>
-                        <Button variant="outline" size="sm" className="rounded-sm">
-                          {activo.estado === 'ASIGNADO' ? 'Ver Detalle' : 'Editar Estado'}
-                        </Button>
-                      </Link>
-                    )}
+                    <Link href={`/admin/activos/${activo.id}/editar`}>
+                      <Button variant="outline" size="sm" className="rounded-sm">
+                        {activo.estado === 'ASIGNADO' || activo.estado === 'TRANSFERIDO' ? 'Editar Documentos' : 'Editar Estado'}
+                      </Button>
+                    </Link>
                   </TableCell>
                 </TableRow>
               )
@@ -294,13 +292,11 @@ export function ActivosTable({ activos }: { activos: any[] }) {
                 </div>
                 <p className="text-xs text-humania-gray">{modelo?.tipos_vehiculo?.nombre}</p>
                 <AlertaDocumentos activo={activo} />
-                {activo.estado !== 'TRANSFERIDO' && (
-                  <Link href={`/admin/activos/${activo.id}/editar`} className="inline-block mt-2">
-                    <Button variant="outline" size="sm" className="rounded-sm">
-                      {activo.estado === 'ASIGNADO' ? 'Ver Detalle' : 'Editar Estado'}
-                    </Button>
-                  </Link>
-                )}
+                <Link href={`/admin/activos/${activo.id}/editar`} className="inline-block mt-2">
+                  <Button variant="outline" size="sm" className="rounded-sm">
+                    {activo.estado === 'ASIGNADO' || activo.estado === 'TRANSFERIDO' ? 'Editar Documentos' : 'Editar Estado'}
+                  </Button>
+                </Link>
               </div>
             </div>
           )
