@@ -11,12 +11,17 @@ import { saveCandidatoEvaluacion } from '@/app/admin/actions'
 import { LETTERS_WITH_PUNCTUATION, capitalizarPalabras } from '@/lib/validation'
 import { TIPO_VIVIENDA_OPTIONS } from '@/lib/domain/indiceSer'
 
-export function EvaluacionForm({ candidatoId, existingData }: { candidatoId: string, existingData?: any }) {
+export function EvaluacionForm({ candidatoId, existingData, edadRegistrada }: { candidatoId: string, existingData?: any, edadRegistrada?: number | null }) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [hasSaved, setHasSaved] = useState(!!existingData?.id)
   const [formData, setFormData] = useState({
-    edad: existingData?.edad?.toString() || '',
+    // Precargada con la edad ya declarada en /apply (candidatos.edad) --
+    // el admin ya no debe volver a escribirla desde cero, aunque puede
+    // corregirla aquí si la entrevista revela un dato distinto. Una
+    // corrección ya guardada en candidatos_evaluacion (existingData)
+    // siempre tiene prioridad sobre la precarga.
+    edad: existingData?.edad?.toString() || edadRegistrada?.toString() || '',
     estado_civil: existingData?.estado_civil || '',
     tiene_hijos: existingData?.tiene_hijos === true ? 'true' : existingData?.tiene_hijos === false ? 'false' : '',
     cantidad_hijos: existingData?.cantidad_hijos?.toString() || '',
@@ -105,6 +110,9 @@ export function EvaluacionForm({ candidatoId, existingData }: { candidatoId: str
         <div className="space-y-2">
           <Label className="text-humania-gray font-medium">Edad</Label>
           <Input name="edad" type="number" min="18" max="99" value={formData.edad} onChange={handleChange} />
+          {!existingData?.edad && edadRegistrada != null && (
+            <p className="text-xs text-neutral-400">Precargada con la edad registrada en la postulación — corrígela si es necesario.</p>
+          )}
         </div>
 
         <div className="space-y-2">

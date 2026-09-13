@@ -135,6 +135,7 @@ export async function POST(req: NextRequest) {
       activo_id: data.activo_id,
       nombres: data.nombres,
       apellidos: data.apellidos,
+      edad: data.edad,
       tipo_documento: data.tipo_documento,
       numero_documento: data.numero_documento,
       correo_electronico: data.correo_electronico,
@@ -149,6 +150,7 @@ export async function POST(req: NextRequest) {
       anos_experiencia_declarados: data.anos_experiencia_declarados,
       licencia_declarada_vigente: data.licencia_declarada_vigente,
       licencia_categorias: data.licencia_categorias,
+      licencia_fecha_vencimiento: data.licencia_fecha_vencimiento ?? null,
       cantidad_comparendos_declarados: data.cantidad_comparendos_declarados,
       estado: estadoFinal,
       // simit_estado solo puede llegar aquí como 'APROBADO' o 'NO_CONSULTADO'

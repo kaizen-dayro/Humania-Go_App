@@ -71,7 +71,8 @@ function ApplyForm() {
     tipo_perfil: 'CONDUCTOR_PLATAFORMA',
     plataformas: [] as string[], plataformas_otro: false, plataformas_otro_texto: '',
     categoria_actividad_seleccion: '', categoria_actividad: '', anos_experiencia_declarados: '',
-    licencia_declarada_vigente: false, licencia_categorias: [] as string[], cantidad_comparendos_declarados: '',
+    licencia_declarada_vigente: false, licencia_categorias: [] as string[], licencia_fecha_vencimiento: '',
+    cantidad_comparendos_declarados: '',
     paz_y_salvo_declarado: '' as '' | 'SI' | 'NO', acuerdo_pago_declarado: '' as '' | 'SI' | 'NO',
   })
 
@@ -225,6 +226,8 @@ function ApplyForm() {
         newErrors.licencia_declarada_vigente = "Es indispensable contar con licencia de conducción vigente para aplicar."
       } else if (formData.licencia_categorias.length === 0) {
         newErrors.licencia_categorias = "Debes seleccionar al menos una categoría de licencia."
+      } else if (!formData.licencia_fecha_vencimiento) {
+        newErrors.licencia_fecha_vencimiento = "Ingresa la fecha de vencimiento de tu licencia."
       }
       const comp = parseInt(formData.cantidad_comparendos_declarados)
       if (isNaN(comp) || comp < 0 || comp > 10) {
@@ -298,6 +301,7 @@ function ApplyForm() {
         anos_experiencia_declarados: formData.anos_experiencia_declarados,
         licencia_declarada_vigente: formData.licencia_declarada_vigente,
         licencia_categorias: formData.licencia_categorias,
+        licencia_fecha_vencimiento: formData.licencia_declarada_vigente ? formData.licencia_fecha_vencimiento : undefined,
         cantidad_comparendos_declarados: parseInt(formData.cantidad_comparendos_declarados) || 0,
         paz_y_salvo_declarado: formData.paz_y_salvo_declarado === '' ? null : formData.paz_y_salvo_declarado === 'SI',
         acuerdo_pago_declarado: formData.acuerdo_pago_declarado === '' ? null : formData.acuerdo_pago_declarado === 'SI',
@@ -696,6 +700,20 @@ function ApplyForm() {
                       ))}
                     </div>
                     <div className="mt-2"><ErrorMsg name="licencia_categorias" errors={errors} /></div>
+
+                    <div className="mt-6 pt-6 border-t border-neutral-100">
+                      <Label htmlFor="licencia_fecha_vencimiento" className="text-humania-gray font-bold text-base block mb-2">¿Fecha de vencimiento?</Label>
+                      <p className="text-sm text-humania-gray/70 mb-4">La que aparece en tu licencia física o digital.</p>
+                      <Input
+                        id="licencia_fecha_vencimiento"
+                        type="date"
+                        name="licencia_fecha_vencimiento"
+                        value={formData.licencia_fecha_vencimiento}
+                        onChange={handleChange}
+                        className={`max-w-xs ${inputClass('licencia_fecha_vencimiento', errors)}`}
+                      />
+                      <ErrorMsg name="licencia_fecha_vencimiento" errors={errors} />
+                    </div>
                   </div>
                 )}
 

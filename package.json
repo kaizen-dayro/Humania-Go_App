@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verificar:presupuesto": "tsc -p src/lib/domain/presupuesto/tsconfig.verificacion.json && node .verificacion-presupuesto/verificacion.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

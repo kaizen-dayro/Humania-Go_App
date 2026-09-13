@@ -13,7 +13,49 @@ import { Parte2Form } from './Parte2Form'
 import { ContractStatusForm } from './ContractStatusForm'
 import { ReferenciaLaboralSection, type ReferenciaLaboralRow } from './ReferenciaLaboralSection'
 import { CollapsibleCard } from './CollapsibleCard'
+import { PagosSemanalesSection } from './PagosSemanalesSection'
 import { getCandidateStatusHistory } from '../../actions'
+import { formatearSoloFecha } from '@/lib/format'
+
+// UI Helpers -- fuera del componente (puros, sin closures sobre estado)
+// para que no se recreen en cada render (lint react-hooks/no-nested-component-definitions).
+function Section({ title, children }: { title: string, children: React.ReactNode }) {
+  return (
+    <div className="bg-white border border-neutral-200 p-8 mb-6 rounded-lg shadow-sm">
+      <h3 className="text-sm font-bold text-humania-gray/50 border-b border-neutral-100 pb-3 mb-6 tracking-widest">{title}</h3>
+      <div className="grid md:grid-cols-2 gap-y-6 gap-x-12">{children}</div>
+    </div>
+  )
+}
+
+function DataPoint({ label, value }: { label: string, value: string | number | boolean | null }) {
+  return (
+    <div>
+      <p className="text-[11px] text-humania-gray/50 font-bold tracking-widest mb-1.5 uppercase">{label}</p>
+      <p className="text-sm font-medium text-humania-blue">
+        {typeof value === 'boolean' ? (value ? 'Sí' : 'No') : (value || 'No especificado')}
+      </p>
+    </div>
+  )
+}
+
+function StatusIcon({ status }: { status: string }) {
+  switch (status) {
+    case 'PASS': return <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+    case 'FAIL': return <XCircle className="w-5 h-5 text-red-500 shrink-0" />
+    case 'PENDING_VERIFICATION': return <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+    case 'NA': default: return <HelpCircle className="w-5 h-5 text-neutral-400 shrink-0" />
+  }
+}
+
+function StatusColorText({ status, text }: { status: string, text: string }) {
+  switch (status) {
+    case 'PASS': return <span className="text-green-700 font-medium">{text}</span>
+    case 'FAIL': return <span className="text-red-700 font-bold">{text}</span>
+    case 'PENDING_VERIFICATION': return <span className="text-amber-700 font-medium">{text}</span>
+    case 'NA': default: return <span className="text-neutral-500 font-medium">{text}</span>
+  }
+}
 
 export default async function CandidatoDetail({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params
@@ -23,6 +65,18 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
   if (!session) {
     redirect('/admin/login')
   }
+
+  // Rol del admin autenticado -- mismo patrón que
+  // web/src/app/admin/presupuesto/page.tsx. Determina si se muestra el
+  // bloque "Configuración avanzada" de Abonos Extraordinarios (spec.md
+  // Documentos/SDD/seguimiento-pagos-semanales/spec.md Sección 12.4 --
+  // primera vez que esta página esconde un control por rol).
+  const { data: caller } = await supabase
+    .from('admin_users')
+    .select('role')
+    .eq('id', session.user.id)
+    .single()
+  const esSuperAdmin = caller?.role === 'SUPER_ADMIN'
 
   // Fetch candidato data including relationships
   const { data: candidato, error } = await supabase
@@ -73,6 +127,13 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
     .eq('candidate_id', resolvedParams.id)
     .order('created_at', { ascending: false })
   const { historial: historialCambios } = await getCandidateStatusHistory(resolvedParams.id)
+  const { data: ultimaAsignacion } = await supabase
+    .from('asset_assignment_history')
+    .select('id, fecha_asignacion, fecha_liberacion, cuota_semanal_acordada, cuota_aplazatoria_acordada, abonos_extraordinarios_fecha_inicio_manual')
+    .eq('candidato_id', resolvedParams.id)
+    .order('fecha_asignacion', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
   const candidatePayload = { ...candidato, fiador, referencias }
   const evaluations = evaluateCandidateRequirements(candidatePayload)
@@ -86,41 +147,6 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
       .eq('estado', 'DISPONIBLE')
 
     activosParaAsignar = actDisp || []
-  }
-
-  // UI Helpers
-  const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
-    <div className="bg-white border border-neutral-200 p-8 mb-6 rounded-lg shadow-sm">
-      <h3 className="text-sm font-bold text-humania-gray/50 border-b border-neutral-100 pb-3 mb-6 tracking-widest">{title}</h3>
-      <div className="grid md:grid-cols-2 gap-y-6 gap-x-12">{children}</div>
-    </div>
-  )
-
-  const DataPoint = ({ label, value }: { label: string, value: string | number | boolean | null }) => (
-    <div>
-      <p className="text-[11px] text-humania-gray/50 font-bold tracking-widest mb-1.5 uppercase">{label}</p>
-      <p className="text-sm font-medium text-humania-blue">
-        {typeof value === 'boolean' ? (value ? 'Sí' : 'No') : (value || 'No especificado')}
-      </p>
-    </div>
-  )
-
-  const StatusIcon = ({ status }: { status: string }) => {
-    switch (status) {
-      case 'PASS': return <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
-      case 'FAIL': return <XCircle className="w-5 h-5 text-red-500 shrink-0" />
-      case 'PENDING_VERIFICATION': return <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-      case 'NA': default: return <HelpCircle className="w-5 h-5 text-neutral-400 shrink-0" />
-    }
-  }
-
-  const StatusColorText = ({ status, text }: { status: string, text: string }) => {
-    switch (status) {
-      case 'PASS': return <span className="text-green-700 font-medium">{text}</span>
-      case 'FAIL': return <span className="text-red-700 font-bold">{text}</span>
-      case 'PENDING_VERIFICATION': return <span className="text-amber-700 font-medium">{text}</span>
-      case 'NA': default: return <span className="text-neutral-500 font-medium">{text}</span>
-    }
   }
 
   const modelo = candidato.activos?.modelos_vehiculo
@@ -249,6 +275,7 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
           <Section title="INFORMACIÓN PERSONAL">
             <DataPoint label="Tipo Documento" value={candidato.tipo_documento} />
             <DataPoint label="Número de Documento" value={candidato.numero_documento} />
+            <DataPoint label="Edad" value={candidato.edad} />
             <DataPoint label="Correo Electrónico" value={candidato.correo_electronico} />
             <DataPoint label="Teléfono" value={candidato.telefono} />
             <DataPoint label="Ciudad" value={candidato.ciudades_operacion?.nombre_oficial} />
@@ -269,6 +296,8 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
 
           <Section title="LICENCIA Y COMPARENDOS">
             <DataPoint label="Licencia Vigente Declarada" value={candidato.licencia_declarada_vigente} />
+            <DataPoint label="Categorías de Licencia" value={(candidato.licencia_categorias || []).join(', ') || null} />
+            <DataPoint label="Fecha de Vencimiento" value={formatearSoloFecha(candidato.licencia_fecha_vencimiento)} />
             <DataPoint label="Comparendos Estimados" value={candidato.cantidad_comparendos_declarados} />
           </Section>
 
@@ -419,7 +448,7 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
                 Esta información complementaria debe ser registrada por el equipo humano durante o después de la entrevista para apoyar la decisión final.
               </p>
               <IndiceSER evaluacion={candidato.candidatos_evaluacion} referenciaLaboral={referenciaLaboral} />
-              <EvaluacionForm candidatoId={candidato.id} existingData={candidato.candidatos_evaluacion} />
+              <EvaluacionForm candidatoId={candidato.id} existingData={candidato.candidatos_evaluacion} edadRegistrada={candidato.edad} />
             </CollapsibleCard>
           )}
 
@@ -430,6 +459,21 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
               activoAsignado={candidato.activos}
               activosDisponibles={activosParaAsignar}
             />
+          )}
+
+          {ultimaAsignacion && (
+            <CollapsibleCard title="PAGOS SEMANALES">
+              <PagosSemanalesSection
+                candidatoId={candidato.id}
+                assignmentId={ultimaAsignacion.id}
+                fechaAsignacion={ultimaAsignacion.fecha_asignacion}
+                cuotaSemanalInicial={ultimaAsignacion.cuota_semanal_acordada}
+                cuotaAplazatoriaInicial={ultimaAsignacion.cuota_aplazatoria_acordada}
+                soloLectura={candidato.estatus_contractual !== 'ACTIVO'}
+                esSuperAdmin={esSuperAdmin}
+                fechaInicioManualInicial={ultimaAsignacion.abonos_extraordinarios_fecha_inicio_manual}
+              />
+            </CollapsibleCard>
           )}
 
           <CollapsibleCard title="HISTORIAL DE CAMBIOS">
