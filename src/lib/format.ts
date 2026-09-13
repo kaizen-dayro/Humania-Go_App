@@ -28,3 +28,20 @@ export function formatearFechaAdmin(fecha: string | Date | null | undefined): st
 
   return `${parte('day')}-${parte('month')}-${parte('year')} ${hora}:${parte('minute')}`
 }
+
+/**
+ * Formato DD-MM-YYYY (sin hora) para columnas `DATE` puras (sin
+ * componente de hora), ej. fecha de vencimiento de un documento. NO
+ * reutiliza `formatearFechaAdmin`/`new Date(...)` a propósito: un string
+ * "YYYY-MM-DD" se interpreta como medianoche UTC, y convertirlo a
+ * America/Bogota (UTC-5) retrocede al día anterior -- un desfase real de
+ * un día. Se parsea el string directamente, sin pasar por Date/zona
+ * horaria.
+ */
+export function formatearSoloFecha(fecha: string | null | undefined): string | null {
+  if (!fecha) return null
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(fecha)
+  if (!match) return null
+  const [, anio, mes, dia] = match
+  return `${dia}-${mes}-${anio}`
+}

@@ -175,6 +175,10 @@ export const ApplicationPayloadSchema = z.object({
   anos_experiencia_declarados: z.enum(TIEMPO_EXPERIENCIA_OPTIONS as unknown as [string, ...string[]], { message: "Selecciona una opción" }),
   licencia_declarada_vigente: z.boolean(),
   licencia_categorias: z.array(z.string()).default([]),
+  // Obligatoria solo cuando licencia_declarada_vigente = true -- ver
+  // .superRefine debajo (pedido de producción, 2026-09-13, para que RRHH
+  // compare la declaración del candidato contra el RUNT).
+  licencia_fecha_vencimiento: z.string().optional(),
   cantidad_comparendos_declarados: z.number()
     .min(0, "Mínimo 0")
     .max(10, "Máximo 10"),
@@ -203,6 +207,15 @@ export const ApplicationPayloadSchema = z.object({
 }, {
   message: "Selecciona al menos una opción para tu perfil de actividad",
   path: ["plataformas"],
+}).superRefine((data, ctx) => {
+  // Pedido de producción (2026-09-13): la fecha de vencimiento de la
+  // licencia solo es obligatoria cuando el candidato declara tenerla
+  // vigente -- mismo patrón que licencia_categorias en el frontend.
+  if (data.licencia_declarada_vigente) {
+    if (!data.licencia_fecha_vencimiento || !/^\d{4}-\d{2}-\d{2}$/.test(data.licencia_fecha_vencimiento)) {
+      ctx.addIssue({ code: 'custom', path: ['licencia_fecha_vencimiento'], message: 'Ingresa la fecha de vencimiento de tu licencia.' })
+    }
+  }
 }).superRefine((data, ctx) => {
   // Fase 18: si el candidato declara entre 1 y SIMIT_MAX_FINES_REQUIRING_VALIDATION
   // comparendos, las preguntas de paz y salvo / acuerdo de pago pasan a ser
