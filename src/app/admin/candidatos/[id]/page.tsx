@@ -57,8 +57,14 @@ function StatusColorText({ status, text }: { status: string, text: string }) {
   }
 }
 
-export default async function CandidatoDetail({ params }: { params: Promise<{ id: string }> }) {
+export default async function CandidatoDetail({ params, searchParams }: { params: Promise<{ id: string }>, searchParams: Promise<{ volverA?: string }> }) {
   const resolvedParams = await params
+  const resolvedSearchParams = await searchParams
+  // Preserva la busqueda/filtros/estado desde donde se llego a este
+  // detalle (CandidatosTable.tsx codifica la URL completa de origen en
+  // `volverA`) -- si no viene ese parametro (ej. entraron por un enlace
+  // directo), cae de vuelta a la lista sin filtros, como antes.
+  const hrefVolver = resolvedSearchParams.volverA ? `/admin/candidatos?${decodeURIComponent(resolvedSearchParams.volverA)}` : '/admin/candidatos'
   const supabase = await createClient()
 
   const { data: { session } } = await supabase.auth.getSession()
@@ -159,7 +165,7 @@ export default async function CandidatoDetail({ params }: { params: Promise<{ id
       <header className="bg-white border-b border-neutral-200 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/admin/candidatos">
+            <Link href={hrefVolver}>
               <Button variant="ghost" size="sm" className="text-humania-gray hover:text-humania-blue -ml-3">
                 &larr; Volver
               </Button>
