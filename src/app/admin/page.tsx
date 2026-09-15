@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
-import { Users, Car, CheckCircle2, AlertTriangle, UserX, ShieldAlert, FileWarning } from 'lucide-react'
+import { Users, Car, CheckCircle2, AlertTriangle, UserX, ShieldAlert, FileWarning, History } from 'lucide-react'
 import Link from 'next/link'
 
 // Fuera del componente a propósito: llamar Date.now() directamente dentro
@@ -47,7 +47,8 @@ export default async function AdminDashboard() {
     { count: descartadosPorEdad },
     { count: descartadosPorExperiencia },
     { count: descartadosPorComparendos },
-    { count: activosConDocumentosPorVencer }
+    { count: activosConDocumentosPorVencer },
+    { data: metricasDescartadosHistorial }
   ] = await Promise.all([
     supabase.from('activos').select('*', { count: 'exact', head: true }),
     supabase.from('activos').select('*', { count: 'exact', head: true }).eq('estado', 'DISPONIBLE'),
@@ -59,7 +60,10 @@ export default async function AdminDashboard() {
     esSuperAdmin
       ? supabase.from('candidatos_descartados_por_comparendos').select('*', { count: 'exact', head: true })
       : Promise.resolve({ count: null }),
-    supabase.from('activos').select('*', { count: 'exact', head: true }).or(filtroVencimientos)
+    supabase.from('activos').select('*', { count: 'exact', head: true }).or(filtroVencimientos),
+    // KAI-36 (Fase 5): unica via de lectura para ADMIN normal -- RLS de la
+    // tabla bloquea el SELECT directo, la RPC ya valida is_active_admin().
+    supabase.rpc('obtener_metricas_descartados_historial') as unknown as Promise<{ data: { total_general: number } | null }>
   ])
 
   return (
@@ -169,6 +173,26 @@ export default async function AdminDashboard() {
             <div>
               <p className="text-4xl font-bold text-humania-blue">{activosConDocumentosPorVencer || 0}</p>
               <p className="text-xs text-orange-700 mt-2 font-medium">Tecnomecánica, SOAT o impuestos vencidos o por vencer (30 días)</p>
+            </div>
+          </Link>
+        </div>
+      </div>
+
+      {/* KAI-36 (Fase 5): visible para todos los ADMIN/SUPER_ADMIN activos -- el detalle identificable queda exclusivo de SUPER_ADMIN dentro de la propia página. */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <History className="w-4 h-4 text-humania-gray/50" />
+          <h2 className="text-xs font-bold text-humania-gray/50 uppercase tracking-widest">Trazabilidad Histórica</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Link href="/admin/candidatos/descartados" className="bg-white p-6 rounded-lg shadow-sm border border-neutral-200 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-sm font-bold text-humania-gray/50 uppercase tracking-widest">Historial de Descartados</h3>
+              <History className="w-5 h-5 text-humania-blue/30" />
+            </div>
+            <div>
+              <p className="text-4xl font-bold text-humania-blue">{metricasDescartadosHistorial?.total_general ?? 0}</p>
+              <p className="text-xs text-humania-gray mt-2 font-medium">Descartes registrados en total (silenciosos + candidatos reales)</p>
             </div>
           </Link>
         </div>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { LayoutDashboard, Users, Car, Tag, Layers, ShieldCheck, LogOut, PlayCircle, MapPin, Menu, X, Calculator } from 'lucide-react'
+import { LayoutDashboard, Users, Car, Tag, Layers, ShieldCheck, LogOut, PlayCircle, MapPin, Menu, X, Calculator, History } from 'lucide-react'
 
 /**
  * Menú lateral del panel administrativo. Antes vivía embebido directo en
@@ -76,6 +76,10 @@ export function AdminSidebar({ esSuperAdmin }: { esSuperAdmin: boolean }) {
           <Link href="/admin/modelos" onClick={cerrar} className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-white/10 transition-colors text-sm font-medium">
             <Layers className="w-5 h-5 text-humania-sand" />
             Modelos
+          </Link>
+          <Link href="/admin/candidatos/descartados" onClick={cerrar} className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-white/10 transition-colors text-sm font-medium">
+            <History className="w-5 h-5 text-humania-sand" />
+            Historial de Descartados
           </Link>
           {esSuperAdmin && (
             <Link href="/admin/administradores" onClick={cerrar} className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-white/10 transition-colors text-sm font-medium">

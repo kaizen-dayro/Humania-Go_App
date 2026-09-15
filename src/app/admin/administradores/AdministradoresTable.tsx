@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AlertCircle } from 'lucide-react'
-import { inviteAdminUser, setAdminRole, setAdminActivo } from '../actions'
+import { inviteAdminUser, setAdminRole, setAdminActivo, reenviarInvitacionAdmin } from '../actions'
 import { LETTERS_ONLY, capitalizarPalabras } from '@/lib/validation'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -46,7 +46,28 @@ export function AdministradoresTable({ usuarios, currentUserId }: { usuarios: Ad
   const [accion, setAccion] = useState<{ tipo: 'ROL' | 'ACTIVO'; target: AdminUsuario; nuevoValor: string | boolean } | null>(null)
   const [motivo, setMotivo] = useState('')
 
+  // Reenviar invitación -- sin diálogo ni motivo (mismo criterio que
+  // "Invitar Administrador", que tampoco lo exige). Feedback por fila:
+  // id en `reenviando` mientras está en curso, `reenviadoOk` unos
+  // segundos al terminar con éxito.
+  const [reenviando, setReenviando] = useState<string | null>(null)
+  const [reenviadoOk, setReenviadoOk] = useState<string | null>(null)
+
   const cantidadSuperAdminsActivos = usuarios.filter(u => u.role === 'SUPER_ADMIN' && u.activo).length
+
+  async function handleReenviarInvitacion(u: AdminUsuario) {
+    setError('')
+    setReenviando(u.id)
+    setReenviadoOk(null)
+    const res = await reenviarInvitacionAdmin(u.id)
+    setReenviando(null)
+    if (!res.success) {
+      setError(res.error || 'No se pudo reenviar la invitación.')
+      return
+    }
+    setReenviadoOk(u.id)
+    setTimeout(() => setReenviadoOk(prev => (prev === u.id ? null : prev)), 4000)
+  }
 
   async function handleInvite() {
     setError('')
@@ -93,6 +114,11 @@ export function AdministradoresTable({ usuarios, currentUserId }: { usuarios: Ad
 
   return (
     <div>
+      {error && !inviteOpen && !accion && (
+        <p className="flex items-center gap-1.5 text-red-600 text-sm mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+          <AlertCircle className="w-4 h-4 shrink-0" />{error}
+        </p>
+      )}
       <div className="flex justify-end mb-6">
         <Button onClick={() => { setInviteOpen(true); setError('') }} className="bg-humania-blue hover:bg-humania-blue/90 text-white rounded-none px-6">
           + Invitar Administrador
@@ -131,6 +157,14 @@ export function AdministradoresTable({ usuarios, currentUserId }: { usuarios: Ad
                     )}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
+                    <Button
+                      variant="outline" size="sm" className="rounded-sm"
+                      disabled={reenviando === u.id}
+                      title="Envía un enlace nuevo para crear/restablecer la contraseña -- útil si la invitación original venció o no se abrió a tiempo"
+                      onClick={() => handleReenviarInvitacion(u)}
+                    >
+                      {reenviando === u.id ? 'Enviando...' : reenviadoOk === u.id ? 'Enviado' : 'Reenviar invitación'}
+                    </Button>
                     <Button
                       variant="outline" size="sm" className="rounded-sm"
                       disabled={esUltimoSuperAdminActivo}
