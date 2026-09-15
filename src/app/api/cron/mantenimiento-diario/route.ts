@@ -169,9 +169,12 @@ async function procesarDescartesExperiencia() {
 async function procesarDescartesComparendos() {
   const resultado = { correosEnviados: 0, correosFallidos: 0, anonimizados: 0 }
 
-  // Fase 18: correo a las 24h (no 48h como edad) y, apenas se envía, se
-  // anonimiza en la misma pasada -- decisión explícita del usuario de
-  // minimizar la retención de datos para este filtro en particular.
+  // Fase 18: correo a las 24h (no 48h como edad/experiencia) -- eso no
+  // cambia. La anonimización SÍ cambió (2026-09-15, decisión explícita
+  // del usuario que revierte la decisión D2 original de KAI-36): pasa a
+  // 3 meses igual que edad/experiencia, en vez de inmediata -- ver el
+  // UPDATE masivo al final de esta función, mismo patrón exacto que las
+  // otras dos causales.
   const limiteCorreo = new Date(Date.now() - HORAS_24_MS).toISOString()
   const { data: pendientesCorreo, error: errPendientes } = await supabaseAdmin
     .from('candidatos_descartados_por_comparendos')
@@ -213,22 +216,31 @@ async function procesarDescartesComparendos() {
 
       if (enviado) resultado.correosEnviados++
       else resultado.correosFallidos++
-
-      // Anonimización inmediata tras el envío (a diferencia de edad, que
-      // espera 3 meses) -- se intenta tanto si el correo se envió como si
-      // falló, para no dejar datos personales retenidos indefinidamente
-      // solo porque Gmail estuvo caído un día.
-      const { error: errAnonInmediato } = await supabaseAdmin
-        .from('candidatos_descartados_por_comparendos')
-        .update({ nombres: null, correo_electronico: null, anonimizado_en: new Date().toISOString() })
-        .eq('id', fila.id)
-
-      if (errAnonInmediato) {
-        console.error('[CRON diario] Error anonimizando registro (comparendos):', fila.id, errAnonInmediato)
-      } else {
-        resultado.anonimizados++
-      }
     }
+  }
+
+  // Anonimización a 3 meses (2026-09-15, ya no inmediata) -- UPDATE
+  // masivo desacoplado del envío de correo, idéntico al de edad/
+  // experiencia. Esto también corrige un punto ciego real del diseño
+  // anterior: al estar acoplada al bucle de correo y filtrada por
+  // `correo_agradecimiento_enviado_en IS NULL`, una fila cuyo correo ya
+  // se había enviado pero cuya anonimización hubiera fallado nunca
+  // volvía a entrar al bucle -- quedaba con datos identificables
+  // retenidos indefinidamente sin que nada lo detectara. El UPDATE
+  // masivo por fecha, sin depender del estado del correo, no tiene ese
+  // problema.
+  const limiteAnonimizacion = new Date(Date.now() - TRES_MESES_MS).toISOString()
+  const { data: anonimizados, error: errAnon } = await supabaseAdmin
+    .from('candidatos_descartados_por_comparendos')
+    .update({ nombres: null, correo_electronico: null, anonimizado_en: new Date().toISOString() })
+    .lte('creado_en', limiteAnonimizacion)
+    .not('correo_electronico', 'is', null)
+    .select('id')
+
+  if (errAnon) {
+    console.error('[CRON diario] Error anonimizando registros (comparendos):', errAnon)
+  } else {
+    resultado.anonimizados = anonimizados?.length || 0
   }
 
   return resultado

@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { BulkStatusModal } from './BulkStatusModal'
+import { Download } from 'lucide-react'
+import writeExcelFile from 'write-excel-file/universal'
 
 const GENEROS: Record<string, string> = {
   MASCULINO: 'Masculino',
@@ -53,6 +55,7 @@ export function CandidatosTable({
 
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [mostrarFiltros, setMostrarFiltros] = useState(false)
+  const [exportando, setExportando] = useState(false)
 
   const [search, setSearch] = useState(searchParams.get('q') || '')
   const [genero, setGenero] = useState(searchParams.get('genero') || '')
@@ -84,6 +87,15 @@ export function CandidatosTable({
     if (estado) { params.set('estado', estado) } else { params.delete('estado') }
     const qs = params.toString()
     return qs ? `${pathname}?${qs}` : pathname
+  }
+
+  // Href hacia el detalle de un candidato, llevando consigo la busqueda/
+  // filtros/estado actuales (codificados en `volverA`) para que el
+  // boton "Volver" del detalle regrese exactamente a esta misma vista
+  // filtrada, en vez de siempre a /admin/candidatos sin filtros.
+  const hrefDetalle = (candidatoId: string) => {
+    const qsActual = searchParams.toString()
+    return qsActual ? `/admin/candidatos/${candidatoId}?volverA=${encodeURIComponent(qsActual)}` : `/admin/candidatos/${candidatoId}`
   }
 
   const toggleSelection = (id: string) => {
@@ -155,6 +167,54 @@ export function CandidatosTable({
 
   const hayFiltrosActivos = !!(search.trim() || genero || tipoPerfil || estatusContractual || activoId)
 
+  // Exporta exactamente los candidatos visibles con los filtros actuales
+  // (busqueda + filtros avanzados + pestana de estado, ya combinados en
+  // filteredCandidatos arriba) -- pedido explicito para el proceso
+  // interno de actualizar datos durante entrevistas y otros usos con
+  // Excel. write-excel-file/universal (sin Web Workers, a diferencia de
+  // la variante /browser) para no complicar el bundling de Next.js --
+  // solo necesitamos un Blob, la descarga se dispara a mano.
+  const handleExportarExcel = async () => {
+    if (filteredCandidatos.length === 0) return
+    setExportando(true)
+    try {
+      const encabezados = [
+        'Nombres', 'Apellidos', 'Documento', 'Correo', 'Telefono', 'Genero', 'Perfil',
+        'Ciudad', 'Municipio', 'Barrio', 'Estado', 'Estatus Contractual', 'Fecha de Postulacion',
+      ]
+
+      const filas = filteredCandidatos.map(c => [
+        { value: c.nombres || '' },
+        { value: c.apellidos || '' },
+        { value: c.numero_documento || '' },
+        { value: c.correo_electronico || '' },
+        { value: c.telefono || '' },
+        { value: GENEROS[c.genero] || c.genero || '' },
+        { value: TIPOS_PERFIL[c.tipo_perfil] || c.tipo_perfil || '' },
+        { value: c.ciudades_operacion?.nombre_oficial || '' },
+        { value: c.municipios_operacion?.nombre_oficial || '' },
+        { value: c.barrio || '' },
+        { value: c.estado || '' },
+        { value: ESTATUS_CONTRACTUALES[c.estatus_contractual] || c.estatus_contractual || '' },
+        { value: c.created_at ? new Date(c.created_at).toLocaleDateString('es-CO') : '' },
+      ])
+
+      const encabezado = encabezados.map(texto => ({ value: texto, fontWeight: 'bold' as const }))
+      const blob = await writeExcelFile([encabezado, ...filas]).toBlob()
+
+      const url = URL.createObjectURL(blob)
+      const enlace = document.createElement('a')
+      enlace.href = url
+      enlace.download = `candidatos_humania_go_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(enlace)
+      enlace.click()
+      document.body.removeChild(enlace)
+      URL.revokeObjectURL(url)
+    } finally {
+      setExportando(false)
+    }
+  }
+
   const idsResultadoActual = filteredCandidatos.map(c => c.id)
   const todosSeleccionados = idsResultadoActual.length > 0 && idsResultadoActual.every(id => selectedIds.includes(id))
   const algunosSeleccionados = idsResultadoActual.some(id => selectedIds.includes(id)) && !todosSeleccionados
@@ -216,6 +276,17 @@ export function CandidatosTable({
             onClick={() => setMostrarFiltros(v => !v)}
           >
             {mostrarFiltros ? 'Ocultar filtros avanzados' : 'Filtros avanzados'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleExportarExcel}
+            disabled={exportando || filteredCandidatos.length === 0}
+            className="gap-1.5"
+          >
+            <Download className="w-4 h-4" />
+            {exportando ? 'Exportando...' : `Exportar a Excel (${filteredCandidatos.length})`}
           </Button>
           {hayFiltrosActivos && (
             <span className="text-xs text-humania-gray/70">
@@ -319,7 +390,7 @@ export function CandidatosTable({
                 <TableCell className="text-sm">{c.ciudades_operacion?.nombre_oficial}</TableCell>
                 <TableCell>{getStatusBadge(c.estado, c.estatus_contractual)}</TableCell>
                 <TableCell className="text-right">
-                  <Link href={`/admin/candidatos/${c.id}`} className="text-sm font-bold text-humania-blue hover:underline">
+                  <Link href={hrefDetalle(c.id)} className="text-sm font-bold text-humania-blue hover:underline">
                     Ver Detalles
                   </Link>
                 </TableCell>
@@ -380,7 +451,7 @@ export function CandidatosTable({
               <span>{new Date(c.created_at).toLocaleDateString()}</span>
             </div>
             <div className="pl-6">
-              <Link href={`/admin/candidatos/${c.id}`} className="text-sm font-bold text-humania-blue hover:underline">
+              <Link href={hrefDetalle(c.id)} className="text-sm font-bold text-humania-blue hover:underline">
                 Ver Detalles
               </Link>
             </div>
