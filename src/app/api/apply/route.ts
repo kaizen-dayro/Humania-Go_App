@@ -48,7 +48,8 @@ export async function POST(req: NextRequest) {
         p_activo_id: data.activo_id,
         p_nombres: data.nombres,
         p_correo_electronico: data.correo_electronico,
-        p_edad: data.edad
+        p_edad: data.edad,
+        p_numero_documento: data.numero_documento
       })
 
       if (descarteError) {
@@ -71,7 +72,8 @@ export async function POST(req: NextRequest) {
         p_activo_id: data.activo_id,
         p_nombres: data.nombres,
         p_correo_electronico: data.correo_electronico,
-        p_tiempo_experiencia_declarado: data.anos_experiencia_declarados
+        p_tiempo_experiencia_declarado: data.anos_experiencia_declarados,
+        p_numero_documento: data.numero_documento
       })
 
       if (descarteError) {
@@ -112,7 +114,8 @@ export async function POST(req: NextRequest) {
         p_comparendos_declarados: data.cantidad_comparendos_declarados,
         p_simit_number_fines: simitResult.number_fines,
         p_paz_y_salvo_declarado: data.paz_y_salvo_declarado ?? null,
-        p_acuerdo_pago_declarado: data.acuerdo_pago_declarado ?? null
+        p_acuerdo_pago_declarado: data.acuerdo_pago_declarado ?? null,
+        p_numero_documento: data.numero_documento
       })
 
       if (descarteError) {

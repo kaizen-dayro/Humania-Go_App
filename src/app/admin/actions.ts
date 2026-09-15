@@ -1237,6 +1237,58 @@ export async function inviteAdminUser(correo: string, nombre: string, role: stri
   return { success: true }
 }
 
+/**
+ * Reenvía un enlace para crear/restablecer contraseña a un administrador
+ * ya existente (invitación original vencida, no abierta a tiempo, o
+ * consumida por un escáner de correo antes de que la persona la abriera
+ * -- caso real, Elaine Carbonó, 2026-09-13). `inviteUserByEmail` no sirve
+ * aquí -- falla con `email_exists` porque el usuario de Auth ya existe
+ * desde la invitación original. Se usa `resetPasswordForEmail` en su
+ * lugar (mismo mecanismo ya usado por `aprobarRecuperacionAction`) --
+ * funciona para cualquier usuario existente sin importar si alguna vez
+ * llegó a definir contraseña, y reutiliza `/crear-password`, que ya
+ * distingue el evento `PASSWORD_RECOVERY` del de invitación original sin
+ * ningún cambio de código adicional.
+ */
+export async function reenviarInvitacionAdmin(adminId: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { data: caller } = await supabase.from('admin_users').select('role, activo').eq('id', session.user.id).single()
+  if (!caller || !caller.activo || caller.role !== 'SUPER_ADMIN') {
+    return { success: false, error: 'No autorizado: solo un SUPER_ADMIN puede reenviar invitaciones.' }
+  }
+
+  let siteUrl: string
+  try {
+    siteUrl = getSiteUrlOrThrow()
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'No se pudo determinar la URL del sitio.' }
+  }
+
+  const serviceClient = getServiceClient()
+  const { data: userData, error: userErr } = await serviceClient.auth.admin.getUserById(adminId)
+  if (userErr || !userData?.user?.email) {
+    console.error('Error resolviendo correo del administrador:', userErr)
+    return { success: false, error: 'No se pudo encontrar el correo de este administrador.' }
+  }
+
+  const { error: sendErr } = await serviceClient.auth.resetPasswordForEmail(userData.user.email, {
+    redirectTo: `${siteUrl}/crear-password`
+  })
+
+  if (sendErr) {
+    console.error('Error reenviando invitación:', sendErr)
+    if ('code' in sendErr && sendErr.code === 'over_email_send_rate_limit') {
+      return { success: false, error: 'Se alcanzó el límite de envío de correos de Supabase. Espera unos minutos e inténtalo de nuevo, o configura un SMTP propio.' }
+    }
+    return { success: false, error: sendErr.message || 'No se pudo reenviar la invitación.' }
+  }
+
+  return { success: true }
+}
+
 export async function setAdminRole(adminId: string, newRole: string, motivo: string) {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
