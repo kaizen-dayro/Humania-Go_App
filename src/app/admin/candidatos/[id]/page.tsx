@@ -180,6 +180,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
               visitaDomiciliariaCompleta={visitaDomiciliariaCompleta(candidato.candidatos_evaluacion)}
               visitaDomiciliariaNoApta={visitaDomiciliariaEsNoApta(candidato.candidatos_evaluacion)}
               puedeDesistirDesdeSeleccionado={!candidato.estatus_contractual}
+              comparendosPendiente={candidato.comparendos_requiere_revision && !candidato.comparendos_revision_resultado}
             />
           </div>
         </div>
@@ -327,6 +328,32 @@ export default async function CandidatoDetail({ params, searchParams }: { params
               </div>
             ) : (
               <p className="text-sm text-neutral-500 font-medium">Postulación anterior a esta validación — sin consulta SIMIT registrada.</p>
+            )}
+
+            {/* KAI-38 (2026-09-16): revisión manual de comparendos -- ver
+                Documentos/SDD/revision-manual-comparendos/. Solo aparece si
+                esta postulación llegó a disparar la condición que antes
+                descartaba automáticamente. */}
+            {candidato.comparendos_requiere_revision && (
+              candidato.comparendos_revision_resultado ? (
+                <p className="text-sm text-neutral-500 mt-6 pt-4 border-t border-neutral-100">
+                  ⚠ Esta postulación disparó la revisión de comparendos —
+                  resuelta como <strong>{candidato.comparendos_revision_resultado === 'CONTINUA' ? 'Continuar proceso' : 'Descartado por comparendos'}</strong>
+                  {candidato.comparendos_revision_resuelta_en && ` el ${new Date(candidato.comparendos_revision_resuelta_en).toLocaleString()}`}.
+                  {candidato.comparendos_revision_nota && (
+                    <>
+                      <br />Nota: {candidato.comparendos_revision_nota}
+                    </>
+                  )}
+                </p>
+              ) : (
+                <div className="mt-6 pt-4 border-t border-amber-200 bg-amber-50 -mx-8 -mb-8 px-8 py-4 rounded-b-lg">
+                  <p className="text-sm font-semibold text-amber-800">⚠ Pendiente de revisión por comparendos</p>
+                  <p className="text-sm text-amber-700 mt-1">
+                    Esta postulación no cumple el criterio automático de comparendos. No se descartó — queda a la espera de que Humania Go revise manualmente la cédula y el detalle de SIMIT de arriba y decida con las acciones de la derecha.
+                  </p>
+                </div>
+              )
             )}
           </div>
 

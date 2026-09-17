@@ -94,39 +94,24 @@ export async function POST(req: NextRequest) {
     const simitResult = await checkSimitFines(data.numero_documento)
 
     // 2b. Filtro de comparendos con paz y salvo / acuerdo de pago (Fase 18,
-    // 2026-08-25): igual que el filtro de edad, si no pasa, el candidato
-    // NUNCA llega a crear una fila en `candidatos` -- solo un registro
-    // mínimo aparte (contador visible solo para SUPER_ADMIN + agradecimiento
-    // a las 24h). La persona no se entera: la respuesta es exactamente
-    // igual a un envío exitoso.
+    // 2026-08-25). KAI-38 (2026-09-16): la CONDICIÓN no cambia -- sigue
+    // siendo exactamente evaluateComparendosFilter, sin tocar su lógica.
+    // Lo que cambia es la CONSECUENCIA: ya no descarta automáticamente ni
+    // en silencio (antes: registrar_descarte_por_comparendos + return
+    // temprano, nunca se creaba el candidato). Ahora el candidato SIEMPRE
+    // se crea -- si no pasa, queda marcado para revisión manual de
+    // Humania Go (comparendos_requiere_revision), bloqueado de avanzar
+    // más allá de REVISION_PRELIMINAR hasta que un admin decida
+    // "Continuar proceso" o "Descartar por comparendos" (ver
+    // Documentos/SDD/revision-manual-comparendos/). La respuesta a
+    // /apply sigue siendo exactamente igual a un envío exitoso normal en
+    // ambos casos -- la persona no se entera de la revisión.
     const comparendosFilter = evaluateComparendosFilter(
       data.cantidad_comparendos_declarados,
       data.paz_y_salvo_declarado,
       data.acuerdo_pago_declarado,
       simitResult
     )
-
-    if (!comparendosFilter.pasa) {
-      const { error: descarteError } = await supabaseAdmin.rpc('registrar_descarte_por_comparendos', {
-        p_activo_id: data.activo_id,
-        p_nombres: data.nombres,
-        p_correo_electronico: data.correo_electronico,
-        p_comparendos_declarados: data.cantidad_comparendos_declarados,
-        p_simit_number_fines: simitResult.number_fines,
-        p_paz_y_salvo_declarado: data.paz_y_salvo_declarado ?? null,
-        p_acuerdo_pago_declarado: data.acuerdo_pago_declarado ?? null,
-        p_numero_documento: data.numero_documento
-      })
-
-      if (descarteError) {
-        console.error(`Error registrando descarte por comparendos [request_id=${requestId}]:`, descarteError)
-      }
-
-      return NextResponse.json({
-        success: true,
-        data: { id: null, estado_preliminar: 'DESCARTADO', razones: [] }
-      }, { status: 201 })
-    }
 
     // 3. Reglas de Negocio / Eligibility restantes (licencia, fiador -- el
     // comparendos ya se resolvió arriba)
@@ -156,16 +141,18 @@ export async function POST(req: NextRequest) {
       licencia_fecha_vencimiento: data.licencia_fecha_vencimiento ?? null,
       cantidad_comparendos_declarados: data.cantidad_comparendos_declarados,
       estado: estadoFinal,
-      // simit_estado solo puede llegar aquí como 'APROBADO' o 'NO_CONSULTADO'
-      // -- el caso 'DESCARTADO' ya se resolvió arriba (2b) y nunca llega a
-      // este punto del código.
+      // simit_estado refleja únicamente si la consulta a SIMIT se pudo
+      // realizar ('APROBADO') o no ('NO_CONSULTADO') -- nunca 'DESCARTADO'
+      // desde aquí, sin relación con el resultado del filtro de
+      // comparendos (ver comparendos_requiere_revision más abajo).
       simit_estado: simitResult.consultado ? 'APROBADO' : 'NO_CONSULTADO',
       simit_number_fines: simitResult.number_fines,
       simit_total_fines: simitResult.total_fines,
       simit_consultado_at: simitResult.consultado_at,
       simit_respuesta_raw: simitResult.respuesta_raw,
       paz_y_salvo_declarado: data.paz_y_salvo_declarado ?? null,
-      acuerdo_pago_declarado: data.acuerdo_pago_declarado ?? null
+      acuerdo_pago_declarado: data.acuerdo_pago_declarado ?? null,
+      comparendos_requiere_revision: !comparendosFilter.pasa
     }
 
     // 4. Operación Transaccional en PostgreSQL
