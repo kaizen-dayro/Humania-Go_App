@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { createClient } from '@/utils/supabase/server'
 import { CandidatosTable } from './CandidatosTable'
+import { FiltrosDescarteInfo } from './FiltrosDescarteInfo'
 
 export default async function CandidatosPage({ searchParams }: { searchParams: Promise<{ estado?: string }> }) {
   const resolvedParams = await searchParams
@@ -48,6 +49,8 @@ export default async function CandidatosPage({ searchParams }: { searchParams: P
           <p className="text-humania-gray">Gestión de postulaciones recibidas</p>
         </div>
       </div>
+
+      <FiltrosDescarteInfo />
 
       <Suspense fallback={<div className="text-humania-gray">Cargando candidatos...</div>}>
         <CandidatosTable

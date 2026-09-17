@@ -51,7 +51,7 @@ export default async function DescartadosHistorialPage() {
   if (esSuperAdmin) {
     const { data, error } = await supabase
       .from('candidatos_descartados_historial')
-      .select('id, poblacion, causal, nombres, correo_electronico, resultado_actual, fecha_descarte, retencion_anonimizado_en')
+      .select('id, poblacion, causal, nombres, correo_electronico, resultado_actual, fecha_descarte, retencion_anonimizado_en, causal_detalle')
       .order('fecha_descarte', { ascending: false })
 
     if (error) {
