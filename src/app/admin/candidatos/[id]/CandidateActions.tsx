@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { bulkChangeCandidateState } from '@/app/admin/actions'
+import { bulkChangeCandidateState, continuarProcesoComparendos, descartarPorComparendos } from '@/app/admin/actions'
 import { MotivoModal } from './MotivoModal'
+
+const NOTA_SUGERIDA_DESCARTE_COMPARENDOS = 'Descartado tras revisión manual de comparendos.'
 
 export function CandidateActions({
   candidatoId,
@@ -13,6 +15,7 @@ export function CandidateActions({
   visitaDomiciliariaCompleta,
   visitaDomiciliariaNoApta,
   puedeDesistirDesdeSeleccionado = false,
+  comparendosPendiente = false,
 }: {
   candidatoId: string
   currentState: string
@@ -21,9 +24,12 @@ export function CandidateActions({
   visitaDomiciliariaCompleta: boolean
   visitaDomiciliariaNoApta: boolean
   puedeDesistirDesdeSeleccionado?: boolean
+  comparendosPendiente?: boolean
 }) {
   const [loading, setLoading] = useState(false)
   const [pendingAction, setPendingAction] = useState<{ newState: string; description: string } | null>(null)
+  const [continuarOpen, setContinuarOpen] = useState(false)
+  const [descartarComparendosOpen, setDescartarComparendosOpen] = useState(false)
 
   const handleAction = (newState: string, description: string) => {
     if (newState === 'SELECCIONADO' && !evaluacionCompleta) {
@@ -57,6 +63,28 @@ export function CandidateActions({
     setPendingAction(null)
   }
 
+  const handleConfirmContinuar = async (nota: string) => {
+    setLoading(true)
+    const res = await continuarProcesoComparendos(candidatoId, nota || null)
+    setLoading(false)
+    if (res.error) {
+      alert(res.error)
+      return
+    }
+    setContinuarOpen(false)
+  }
+
+  const handleConfirmDescartarComparendos = async (motivo: string) => {
+    setLoading(true)
+    const res = await descartarPorComparendos(candidatoId, motivo)
+    setLoading(false)
+    if (res.error) {
+      alert(res.error)
+      return
+    }
+    setDescartarComparendosOpen(false)
+  }
+
   return (
     <>
       <MotivoModal
@@ -69,7 +97,74 @@ export function CandidateActions({
         onConfirm={handleConfirmMotivo}
       />
 
-      {currentState === 'DESISTE' ? (
+      {/* KAI-38: "Continuar proceso" -- nota opcional, permite dígitos, sin
+          mínimo de caracteres (solo si se escribe algo, ver MotivoModal). */}
+      <MotivoModal
+        open={continuarOpen}
+        onOpenChange={setContinuarOpen}
+        title="Continuar proceso"
+        description='Humania Go revisó el caso de comparendos de este candidato y decidió permitir que continúe en el proceso. Esto no elimina los comparendos ni lo hace automáticamente elegible para todas las etapas — solo libera el bloqueo de esta revisión.'
+        confirmLabel="Confirmar: continuar proceso"
+        loading={loading}
+        onConfirm={handleConfirmContinuar}
+        required={false}
+        minLength={1}
+        maxLength={500}
+        allowDigits
+        label="Nota de revisión (opcional)"
+        placeholder="Escribe una nota si quieres dejar contexto adicional..."
+      />
+
+      {/* KAI-38: "Descartar por comparendos" -- motivo obligatorio,
+          pre-cargado con el texto sugerido, editable. Registra causal
+          COMPARENDOS en KAI-36, nunca MANUAL. */}
+      <MotivoModal
+        open={descartarComparendosOpen}
+        onOpenChange={setDescartarComparendosOpen}
+        title="Descartar por comparendos"
+        description="Confirma que deseas descartar a este candidato tras la revisión manual de comparendos. Esta acción es definitiva."
+        confirmLabel="Confirmar descarte"
+        loading={loading}
+        onConfirm={handleConfirmDescartarComparendos}
+        initialValue={NOTA_SUGERIDA_DESCARTE_COMPARENDOS}
+      />
+
+      {comparendosPendiente ? (
+        // KAI-38: mientras la revisión de comparendos está pendiente, no
+        // se muestra el botón genérico "Descartar candidato" ni "Pasar a
+        // entrevista" (ambos rechazados de todas formas por
+        // bulk_change_candidate_status, ver migración 00073). "Desiste" SÍ
+        // se mantiene -- decisión explícita en plan.md: el candidato puede
+        // desistir por su cuenta sin relación con la revisión interna, y
+        // la RPC ya lo permite; ocultarlo aquí lo habría dejado
+        // inalcanzable desde la interfaz.
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={() => setContinuarOpen(true)}
+            disabled={loading}
+            className="bg-humania-blue hover:bg-humania-blue/90"
+          >
+            Continuar proceso
+          </Button>
+          <Button
+            onClick={() => setDescartarComparendosOpen(true)}
+            disabled={loading}
+            variant="destructive"
+          >
+            Descartar por comparendos
+          </Button>
+          {(currentState === 'REVISION_PRELIMINAR' || currentState === 'BACKUP' || currentState === 'ENTREVISTA' ||
+            (currentState === 'SELECCIONADO' && puedeDesistirDesdeSeleccionado)) && (
+            <Button
+              onClick={() => handleAction('DESISTE', '¿Confirmas que deseas marcar a este candidato como Desiste?')}
+              disabled={loading}
+              variant="outline"
+            >
+              Desiste
+            </Button>
+          )}
+        </div>
+      ) : currentState === 'DESISTE' ? (
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => handleAction('REVISION_PRELIMINAR', '¿Confirmas que deseas pasar este candidato nuevamente a revisión?')}

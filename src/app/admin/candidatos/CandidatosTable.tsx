@@ -144,6 +144,16 @@ export function CandidatosTable({
     }
   }
 
+  // KAI-38 (2026-09-16): badge adicional, independiente del badge de
+  // estado -- no es un estado nuevo, es una marca aparte (ver
+  // Documentos/SDD/revision-manual-comparendos/). Solo se muestra
+  // mientras está PENDIENTE (ya resuelto no necesita destacarse en la
+  // lista, el detalle del candidato sigue mostrando el historial).
+  const getComparendosPendienteBadge = (requiereRevision: boolean, resultado: string | null) => {
+    if (!requiereRevision || resultado) return null
+    return <Badge className="bg-amber-500 hover:bg-amber-600">⚠ Revisar comparendos</Badge>
+  }
+
   const filteredCandidatos = useMemo(() => {
     const q = search.trim().toLowerCase()
     return candidatos.filter(c => {
@@ -388,7 +398,12 @@ export function CandidatosTable({
                 </TableCell>
                 <TableCell className="text-sm">{c.tipo_perfil}</TableCell>
                 <TableCell className="text-sm">{c.ciudades_operacion?.nombre_oficial}</TableCell>
-                <TableCell>{getStatusBadge(c.estado, c.estatus_contractual)}</TableCell>
+                <TableCell>
+                  <div className="flex flex-col gap-1 items-start">
+                    {getStatusBadge(c.estado, c.estatus_contractual)}
+                    {getComparendosPendienteBadge(c.comparendos_requiere_revision, c.comparendos_revision_resultado)}
+                  </div>
+                </TableCell>
                 <TableCell className="text-right">
                   <Link href={hrefDetalle(c.id)} className="text-sm font-bold text-humania-blue hover:underline">
                     Ver Detalles
@@ -443,7 +458,10 @@ export function CandidatosTable({
                   <p className="text-xs text-humania-gray">{c.numero_documento}</p>
                 </div>
               </div>
-              {getStatusBadge(c.estado, c.estatus_contractual)}
+              <div className="flex flex-col gap-1 items-end">
+                {getStatusBadge(c.estado, c.estatus_contractual)}
+                {getComparendosPendienteBadge(c.comparendos_requiere_revision, c.comparendos_revision_resultado)}
+              </div>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-humania-gray pl-6">
               <span>{c.tipo_perfil}</span>

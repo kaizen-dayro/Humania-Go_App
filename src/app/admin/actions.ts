@@ -945,6 +945,100 @@ export async function bulkChangeCandidateState(
   return { success: true }
 }
 
+/**
+ * KAI-38 (2026-09-16): resuelve una revisión de comparendos pendiente sin
+ * descartar al candidato -- "Humania revisó el caso y decidió permitir que
+ * el candidato continúe en el proceso" (spec.md D5). No cambia `estado`,
+ * no crea fila en `candidate_status_history` (esa tabla no contempla un
+ * evento que no cambia de estado), no envía correo (el candidato nunca se
+ * enteró de que hubo una revisión). Deliberadamente separada de
+ * `bulkChangeCandidateState` -- ver Documentos/SDD/revision-manual-comparendos/.
+ */
+export async function continuarProcesoComparendos(candidatoId: string, nota: string | null) {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('continuar_proceso_comparendos', {
+    p_candidato_id: candidatoId,
+    p_nota: nota && nota.trim() ? nota.trim() : null
+  })
+
+  if (error) {
+    console.error('Error en continuar_proceso_comparendos:', error)
+    return { success: false, error: error.message || 'Error al continuar el proceso.' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  revalidatePath('/admin/candidatos')
+  return { success: true }
+}
+
+/**
+ * KAI-38: descarta a un candidato cuya revisión de comparendos está
+ * pendiente, registrando causal COMPARENDOS en el histórico de KAI-36 --
+ * nunca MANUAL. Deliberadamente separada de `bulkChangeCandidateState`
+ * (esa función hardcodea la causal MANUAL, ver plan.md Sección 3). Envía
+ * el mismo correo "APPLICATION_REJECTED" que cualquier otro descarte, para
+ * no romper la paridad de notificación con el resto del panel.
+ */
+export async function descartarPorComparendos(candidatoId: string, motivo: string) {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'No autorizado' }
+
+  if (!motivo || !motivo.trim()) {
+    return { success: false, error: 'El motivo es obligatorio.' }
+  }
+
+  const { error } = await supabase.rpc('descartar_candidato_por_comparendos', {
+    p_candidato_id: candidatoId,
+    p_motivo: motivo
+  })
+
+  if (error) {
+    console.error('Error en descartar_candidato_por_comparendos:', error)
+    return { success: false, error: error.message || 'Error al descartar el candidato.' }
+  }
+
+  const { data: candidato } = await supabase
+    .from('candidatos')
+    .select('id, nombres, correo_electronico')
+    .eq('id', candidatoId)
+    .single()
+
+  if (candidato) {
+    try {
+      await sendCandidateEmail({
+        candidateId: candidato.id,
+        to: candidato.correo_electronico,
+        subject: "Humania Go — Actualización de tu postulación",
+        eventType: "APPLICATION_REJECTED",
+        html: `
+          <div style="font-family: Arial, sans-serif; color: #2F3437; line-height: 1.6;">
+            <h2>Hola, ${candidato.nombres}.</h2>
+            <p>Muchas gracias por tu interés en Humania Go y por haber participado en nuestro proceso.</p>
+            <p>Después de revisar la información disponible y realizar las verificaciones correspondientes, nuestro equipo humano ha decidido no continuar con esta postulación en esta ocasión.</p>
+            <p>Agradecemos el tiempo que dedicaste al proceso.</p>
+            <p>En otra ocasión podrás volver a aplicar a una oportunidad disponible que se ajuste a tu perfil.</p>
+            <p>Te deseamos muchos éxitos.</p>
+            <br>
+            <p><strong>Equipo Humano</strong><br>Humania Go</p>
+          </div>
+        `
+      })
+    } catch (err) {
+      console.error('Error enviando correo de descarte por comparendos:', err)
+    }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  revalidatePath('/admin/candidatos')
+  return { success: true }
+}
+
 export async function updateContractStatus(
   candidatoId: string,
   nuevoEstatus: string,
