@@ -22,6 +22,42 @@ export interface HistorialRow {
   resultado_actual: string
   fecha_descarte: string
   retencion_anonimizado_en: string | null
+  causal_detalle: Record<string, unknown> | null
+}
+
+/**
+ * KAI-36 addendum (2026-09-17): causal_detalle ya se guardaba desde el
+ * origen (registrar_descarte_por_edad/_experiencia/_comparendos,
+ * submit_application, bulk_change_candidate_status,
+ * descartar_candidato_por_comparendos) -- esta funcion solo la traduce a
+ * texto humano para la columna "Detalle". Basada en las CLAVES presentes,
+ * no en la causal de la fila, porque COMPARENDOS puede tener 2 formas
+ * distintas segun si nacio del descarte silencioso (Poblacion A) o del
+ * descarte manual de KAI-38 (motivo_original, igual que MANUAL/
+ * NO_DETERMINADA). Nunca inventa un campo que no venga en el JSON --
+ * si no reconoce ninguna clave conocida, muestra un guion.
+ */
+function formatearDetalle(detalle: Record<string, unknown> | null): string {
+  if (!detalle || Object.keys(detalle).length === 0) return '—'
+
+  if (typeof detalle.edad_declarada === 'number') {
+    return `${detalle.edad_declarada} años`
+  }
+  if (typeof detalle.tiempo_experiencia_declarado === 'string') {
+    return detalle.tiempo_experiencia_declarado
+  }
+  if ('comparendos_declarados' in detalle) {
+    const declarados = detalle.comparendos_declarados
+    const simit = detalle.simit_number_fines
+    return `${declarados} declarado${declarados === 1 ? '' : 's'}${typeof simit === 'number' ? ` · SIMIT: ${simit}` : ''}`
+  }
+  if (typeof detalle.licencia_declarada_vigente === 'boolean') {
+    return detalle.licencia_declarada_vigente ? 'Declarada vigente' : 'Declarada no vigente'
+  }
+  if (typeof detalle.motivo_original === 'string' && detalle.motivo_original) {
+    return detalle.motivo_original
+  }
+  return '—'
 }
 
 const CAUSAL_LABELS: Record<string, string> = {
@@ -99,6 +135,7 @@ export function DescartadosHistorialTable({ historial }: { historial: HistorialR
               <TableHead>Fecha de Descarte</TableHead>
               <TableHead>Población</TableHead>
               <TableHead>Causal</TableHead>
+              <TableHead>Detalle</TableHead>
               <TableHead>Nombre</TableHead>
               <TableHead>Correo</TableHead>
               <TableHead>Estado del Dato</TableHead>
@@ -115,6 +152,9 @@ export function DescartadosHistorialTable({ historial }: { historial: HistorialR
                   </TableCell>
                   <TableCell className="text-sm">{POBLACION_LABELS[h.poblacion] ?? h.poblacion}</TableCell>
                   <TableCell className="text-sm">{CAUSAL_LABELS[h.causal] ?? h.causal}</TableCell>
+                  <TableCell className="text-sm text-humania-gray max-w-[220px] truncate" title={formatearDetalle(h.causal_detalle)}>
+                    {formatearDetalle(h.causal_detalle)}
+                  </TableCell>
                   <TableCell className="text-sm">{h.nombres ?? <span className="text-neutral-400 italic">Anonimizado</span>}</TableCell>
                   <TableCell className="text-sm">{h.correo_electronico ?? <span className="text-neutral-400 italic">Anonimizado</span>}</TableCell>
                   <TableCell>
@@ -129,7 +169,7 @@ export function DescartadosHistorialTable({ historial }: { historial: HistorialR
 
             {historial.length > 0 && filtrado.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center h-32 text-neutral-500">
+                <TableCell colSpan={8} className="text-center h-32 text-neutral-500">
                   No se encontraron registros que coincidan con los filtros aplicados.
                 </TableCell>
               </TableRow>
@@ -137,7 +177,7 @@ export function DescartadosHistorialTable({ historial }: { historial: HistorialR
 
             {historial.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center h-32 text-neutral-500">
+                <TableCell colSpan={8} className="text-center h-32 text-neutral-500">
                   Todavía no hay registros en el histórico de descartados.
                 </TableCell>
               </TableRow>
