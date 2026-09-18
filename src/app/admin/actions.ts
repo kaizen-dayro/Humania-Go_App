@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { sendCandidateEmail } from '@/lib/services/email'
-import { PHONE_CO, LETTERS_ONLY, LETTERS_WITH_PUNCTUATION } from '@/lib/validation'
+import { PHONE_CO, LETTERS_ONLY, LETTERS_WITH_PUNCTUATION, DESCRIPTIVE_TEXT } from '@/lib/validation'
 
 /**
  * URL real del sitio para construir redirectTo en correos de Supabase Auth
@@ -228,6 +228,74 @@ export async function getCandidateStatusHistory(candidatoId: string) {
     success: true,
     historial: historial.map(h => ({ ...h, usuario_email: emailPorUsuario[h.usuario_id] || 'Administrador' }))
   }
+}
+
+/**
+ * Observaciones de RRHH sobre un candidato (2026-09-18, pedido explícito
+ * del usuario) -- lectura del historial completo, mismo patrón de
+ * resolución de email que getCandidateStatusHistory de arriba. La tabla
+ * es solo-INSERT (sin UPDATE/DELETE, ver migración 00075), así que este
+ * historial nunca se reescribe -- cada llamada trae todo lo que existe.
+ */
+export async function getCandidatoObservaciones(candidatoId: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado', observaciones: [] }
+
+  const { data: observaciones, error } = await supabase
+    .from('candidatos_observaciones')
+    .select('id, texto, usuario_id, created_at')
+    .eq('candidato_id', candidatoId)
+    .order('created_at', { ascending: false })
+
+  if (error || !observaciones) {
+    console.error('Error obteniendo observaciones del candidato:', error)
+    return { success: false, error: 'No se pudieron cargar las observaciones', observaciones: [] }
+  }
+
+  const serviceClient = getServiceClient()
+  const usuarioIds = [...new Set(observaciones.map(o => o.usuario_id))]
+  const emailPorUsuario: Record<string, string> = {}
+  await Promise.all(usuarioIds.map(async (uid) => {
+    const { data } = await serviceClient.auth.admin.getUserById(uid)
+    if (data?.user?.email) emailPorUsuario[uid] = data.user.email
+  }))
+
+  return {
+    success: true,
+    observaciones: observaciones.map(o => ({ ...o, usuario_email: emailPorUsuario[o.usuario_id] || 'Administrador' }))
+  }
+}
+
+/**
+ * Registra una observación nueva -- nunca edita ni borra una existente
+ * (la tabla ni siquiera tiene política de UPDATE/DELETE, ver 00075). Sin
+ * capitalización forzada por palabra a propósito (decisión explícita del
+ * usuario): es una nota libre de RRHH, no un motivo corto estructurado --
+ * forzar mayúscula en cada palabra se vería artificial en un párrafo.
+ * Solo se recortan espacios de más.
+ */
+export async function addCandidatoObservacion(candidatoId: string, texto: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const textoNormalizado = texto.trim().replace(/\s+/g, ' ')
+  if (!esTextoValido(textoNormalizado, DESCRIPTIVE_TEXT, 3, 2000)) {
+    return { success: false, error: 'La observación debe tener entre 3 y 2000 caracteres, con letras, números y puntuación básica.' }
+  }
+
+  const { error } = await supabase
+    .from('candidatos_observaciones')
+    .insert({ candidato_id: candidatoId, texto: textoNormalizado, usuario_id: session.user.id })
+
+  if (error) {
+    console.error('Error registrando observación:', error)
+    return { success: false, error: 'No se pudo guardar la observación' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  return { success: true }
 }
 
 /**
