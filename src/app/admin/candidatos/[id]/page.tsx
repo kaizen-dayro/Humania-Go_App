@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { evaluateCandidateRequirements, evaluacionAvanzadaCompleta, visitaDomiciliariaCompleta, visitaDomiciliariaEsNoApta } from '@/lib/domain/eligibility'
 import { CheckCircle2, XCircle, AlertTriangle, HelpCircle } from 'lucide-react'
 import { CandidateActions } from './CandidateActions'
+import { ObservacionesSection } from './ObservacionesSection'
 import { EvaluacionForm } from './EvaluacionForm'
 import { IndiceSER } from './IndiceSER'
 import { LicenciaVerificacionForm } from './LicenciaVerificacionForm'
@@ -14,7 +15,7 @@ import { ContractStatusForm } from './ContractStatusForm'
 import { ReferenciaLaboralSection, type ReferenciaLaboralRow } from './ReferenciaLaboralSection'
 import { CollapsibleCard } from './CollapsibleCard'
 import { PagosSemanalesSection } from './PagosSemanalesSection'
-import { getCandidateStatusHistory } from '../../actions'
+import { getCandidateStatusHistory, getCandidatoObservaciones } from '../../actions'
 import { formatearSoloFecha } from '@/lib/format'
 
 // UI Helpers -- fuera del componente (puros, sin closures sobre estado)
@@ -133,6 +134,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
     .eq('candidate_id', resolvedParams.id)
     .order('created_at', { ascending: false })
   const { historial: historialCambios } = await getCandidateStatusHistory(resolvedParams.id)
+  const { observaciones } = await getCandidatoObservaciones(resolvedParams.id)
   const { data: ultimaAsignacion } = await supabase
     .from('asset_assignment_history')
     .select('id, fecha_asignacion, fecha_liberacion, cuota_semanal_acordada, cuota_aplazatoria_acordada, abonos_extraordinarios_fecha_inicio_manual')
@@ -212,6 +214,8 @@ export default async function CandidatoDetail({ params, searchParams }: { params
             )}
           </div>
         </div>
+
+        <ObservacionesSection candidatoId={resolvedParams.id} observaciones={observaciones} />
 
         {/* Resumen de Requisitos y Alertas */}
         <div className="grid md:grid-cols-2 gap-6">
