@@ -46,6 +46,9 @@ export interface ParametrosPresupuesto {
    * % de la cuota mensual ORIGINAL del crédito (nunca de la cuota del
    * conductor ni del ingreso operativo), 100% a capital. 0 = sin abono
    * (comportamiento idéntico al de antes de esta funcionalidad).
+   * Fracción (1 = 100% de la cuota); puede superar 1 — en la operación
+   * real se abona a capital 2, 3 o 5 veces la cuota (hasta
+   * `PORCENTAJE_ABONO_CAPITAL_MAXIMO`, 500%).
    */
   porcentajeAbonoCapital: number
   /** Mes desde el cual aplica el abono (sugerido 3, coincide con el Excel de referencia — no un valor de negocio confirmado como fijo). */
@@ -191,6 +194,18 @@ export function margenVentaActivo(p: ParametrosPresupuesto): number {
   return p.valorVentaContractualActivo - p.precioCompra
 }
 
+/**
+ * Tope de `porcentajeAbonoCapital` como fracción de la cuota mensual
+ * original (5 = 500%). Ampliado desde 1 (100%) a pedido de Humania Go
+ * (2026-09-19): en la vida real se abona a capital 200%, 300% o 500% de
+ * la cuota. El motor (`amortizarCreditoConAbono`) nunca deja el saldo
+ * negativo sin importar el porcentaje — el abono se limita al saldo
+ * restante — así que este tope es de sensatez, no de estabilidad
+ * numérica. Fuente única: la validación del servidor y el clamp de la
+ * interfaz usan esta misma constante.
+ */
+export const PORCENTAJE_ABONO_CAPITAL_MAXIMO = 5
+
 /** Rangos de validación (plan.md Sección 6) — nunca se acepta un valor fuera de rango silenciosamente. */
 export function validarParametros(p: ParametrosPresupuesto): string[] {
   const errores: string[] = []
@@ -248,8 +263,10 @@ export function validarParametros(p: ParametrosPresupuesto): string[] {
   if (!Number.isInteger(p.impuestosPeriodicidadMeses) || p.impuestosPeriodicidadMeses <= 0) {
     errores.push('impuestosPeriodicidadMeses debe ser un entero mayor que 0')
   }
-  if (p.porcentajeAbonoCapital < 0 || p.porcentajeAbonoCapital > 1) {
-    errores.push('porcentajeAbonoCapital debe estar entre 0 y 1 (0%-100%)')
+  if (!(p.porcentajeAbonoCapital >= 0 && p.porcentajeAbonoCapital <= PORCENTAJE_ABONO_CAPITAL_MAXIMO)) {
+    errores.push(
+      `porcentajeAbonoCapital debe estar entre 0 y ${PORCENTAJE_ABONO_CAPITAL_MAXIMO} (0%-${PORCENTAJE_ABONO_CAPITAL_MAXIMO * 100}%)`,
+    )
   }
   if (!Number.isInteger(p.mesInicioAbonoCapital) || p.mesInicioAbonoCapital < 1) {
     errores.push('mesInicioAbonoCapital debe ser un entero mayor o igual a 1')

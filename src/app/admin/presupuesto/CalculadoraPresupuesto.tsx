@@ -38,6 +38,7 @@ import { calcularMetricas, type ResultadoMetricas } from '@/lib/domain/presupues
 import { calcularVeredicto } from '@/lib/domain/presupuesto/veredicto'
 import {
   PARAMETROS_REFERENCIA,
+  PORCENTAJE_ABONO_CAPITAL_MAXIMO,
   equityConductorSemanal,
   validarParametros,
   type ModalidadAdquisicion,
@@ -559,7 +560,7 @@ export function CalculadoraPresupuesto() {
                     descripcion="% de la cuota mensual original, 100% a capital, reducción de plazo. 0% = sin abono."
                     suffix="%"
                     valor={Math.round(parametros.porcentajeAbonoCapital * 1000) / 10}
-                    onChange={(v) => setParam('porcentajeAbonoCapital')(Math.max(0, v) / 100)}
+                    onChange={(v) => setParam('porcentajeAbonoCapital')(Math.min(PORCENTAJE_ABONO_CAPITAL_MAXIMO, Math.max(0, v) / 100))}
                   />
                   <CampoNumero
                     label="Mes desde el cual aplica el abono"
