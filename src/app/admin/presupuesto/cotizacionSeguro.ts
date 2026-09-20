@@ -13,6 +13,7 @@
 import type { createClient } from '@/utils/supabase/server'
 import {
   COLUMNAS_FINANCIACION_COTIZACION,
+  COLUMNAS_POLIZA_EMBEBIDA,
   resolverLecturaCotizacion,
   type FinanciacionSeguroFila,
   type LecturaCotizacion,
@@ -24,7 +25,7 @@ export async function leerCotizacionSeguroVigente(supabase: ClienteSupabase): Pr
   // `limit(2)` basta: con más de una activa no se elige ninguna (resolverLecturaCotizacion).
   const { data, error } = await supabase
     .from('financiaciones_seguro')
-    .select(COLUMNAS_FINANCIACION_COTIZACION)
+    .select(`${COLUMNAS_FINANCIACION_COTIZACION}, ${COLUMNAS_POLIZA_EMBEBIDA}`)
     .eq('estado', 'ACTIVE')
     .order('created_at', { ascending: false })
     .limit(2)
