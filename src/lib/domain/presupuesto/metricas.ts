@@ -154,6 +154,18 @@ export interface ResultadoMetricas {
    * indicador de este resultado lo usa. null = no hay cotización cargada.
    */
   seguroNominal: ResultadoCronogramaSeguro | null
+
+  /**
+   * Meses REALES que dura el crédito bancario del vehículo: los del cronograma con
+   * abono a capital cuando hay abono, y el plazo nominal (`mesesCreditoVehiculo`) si
+   * no. null en Recursos Propios (no hay crédito). Es el dato que debe usar cualquier
+   * mensaje o vista que hable de "cuánto dura el crédito": el plazo nominal ignora el
+   * abono y da un resultado falso cuando este acorta el crédito.
+   */
+  mesesCreditoReales: number | null
+
+  /** true si el crédito sigue pagándose después de terminado el contrato con el conductor (usa `mesesCreditoReales`). */
+  creditoSobreviveAlContrato: boolean
 }
 
 export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUsadas = 0): ResultadoMetricas {
@@ -249,6 +261,9 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
 
   const recursosPropios = recursosPropiosEfectivos(p)
 
+  // Duración real del crédito: con abono a capital el cronograma termina antes del plazo nominal.
+  const mesesCreditoReales = esRecursosPropios ? null : amortizacionConAbono ? amortizacionConAbono.mesesReales : p.mesesCreditoVehiculo
+
   return {
     flujo,
     inversionInicialTotal: inversion,
@@ -276,5 +291,7 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
     amortizacionConAbono,
     datosNoConfirmados: calcularDatosNoConfirmados(p),
     seguroNominal: p.seguro.cotizacion ? calcularCronogramaSeguro(p.seguro.cotizacion) : null,
+    mesesCreditoReales,
+    creditoSobreviveAlContrato: mesesCreditoReales !== null && mesAlFinDelContrato < mesesCreditoReales,
   }
 }

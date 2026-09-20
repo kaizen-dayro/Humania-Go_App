@@ -182,7 +182,8 @@ function ResumenEjecutivo({ resultado }: { resultado: ResultadoMetricas }) {
 function EstadoOperacion({ resultado, parametros }: { resultado: ResultadoMetricas; parametros: ParametrosPresupuesto }) {
   const semanasPorMes = parametros.semanasPorAno / parametros.mesesPorAno
   const mesAlFinDelContrato = resultado.flujo.duracionContratoSemanas / semanasPorMes
-  const creditoSobrevive = parametros.modalidadAdquisicion === 'CREDITO' && mesAlFinDelContrato < parametros.mesesCreditoVehiculo
+  // Con abono a capital el crédito dura menos que su plazo nominal: se compara la duración REAL (`mesesCreditoReales`).
+  const creditoSobrevive = resultado.creditoSobreviveAlContrato
 
   // D3 refinada (2026-09-01, spec.md Sección 23): el estado general
   // (verde/ámbar) se decide con el payback de flujo contractual
@@ -204,7 +205,7 @@ function EstadoOperacion({ resultado, parametros }: { resultado: ResultadoMetric
   }
   if (creditoSobrevive) {
     detalles.push(
-      `El crédito bancario (plazo ${parametros.mesesCreditoVehiculo} meses) continúa pagándose después de finalizar el contrato con el conductor (contrato ≈ ${mesAlFinDelContrato.toFixed(1)} meses).`,
+      `El crédito bancario (plazo ${resultado.mesesCreditoReales} meses) continúa pagándose después de finalizar el contrato con el conductor (contrato ≈ ${mesAlFinDelContrato.toFixed(1)} meses).`,
     )
   }
   if (resultado.resultadoNeto < 0) {

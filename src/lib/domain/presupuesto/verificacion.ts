@@ -460,4 +460,62 @@ verificar('versión del modelo: se conserva v1.0 (solo hubo marcado aditivo; la 
   assert.equal(FINANCIAL_MODEL_VERSION, 'Humania Go Financial Model v1.0')
 })
 
+// ===== Duración REAL del crédito y mensaje "el crédito continúa pagándose" (fix, 2026-09-20) =====
+// El mensaje comparaba el contrato con el plazo NOMINAL del crédito y decía "continúa pagándose" aunque el
+// abono a capital ya lo hubiera cancelado. Ahora usa los meses reales del cronograma.
+
+const mesesContratoReferencia = (m: ReturnType<typeof calcularMetricas>) => m.flujo.duracionContratoSemanas / (p.semanasPorAno / p.mesesPorAno)
+
+verificar('mesesCreditoReales: sin abono es el plazo nominal (72); con abono, los meses reales del cronograma (100%→26, 200%→17, 300%→13, 500%→9)', () => {
+  assert.equal(calcularMetricas(p, 0).mesesCreditoReales, p.mesesCreditoVehiculo)
+  for (const [pct, esperado] of [[1, 26], [2, 17], [3, 13], [5, 9]]) {
+    const m = calcularMetricas({ ...p, porcentajeAbonoCapital: pct, mesInicioAbonoCapital: 3 }, 0)
+    assert.ok(m.amortizacionConAbono)
+    assert.equal(m.mesesCreditoReales, m.amortizacionConAbono!.mesesReales)
+    assert.equal(m.mesesCreditoReales, esperado, `abono ${pct * 100}%`)
+  }
+})
+
+verificar('creditoSobreviveAlContrato usa la duración REAL: sin abono y con abono pequeño sobrevive; con abono que lo cancela antes del contrato (~35,1 meses) ya no', () => {
+  const contrato = mesesContratoReferencia(calcularMetricas(p, 0))
+  assert.ok(Math.abs(contrato - 35.08) < 0.01)
+  assert.equal(calcularMetricas(p, 0).creditoSobreviveAlContrato, true, 'sin abono: 72 > 35,1')
+  const con50 = calcularMetricas({ ...p, porcentajeAbonoCapital: 0.5, mesInicioAbonoCapital: 3 }, 0)
+  assert.equal(con50.mesesCreditoReales, 38, 'con 50% el crédito dura 38 meses, no 72')
+  assert.equal(con50.creditoSobreviveAlContrato, true, '38 > 35,1: sigue pagándose, pero el plazo que se informa es el real')
+  for (const pct of [1, 2, 3, 5]) {
+    const m = calcularMetricas({ ...p, porcentajeAbonoCapital: pct, mesInicioAbonoCapital: 3 }, 0)
+    assert.equal(m.creditoSobreviveAlContrato, false, `con ${pct * 100}% el crédito (${m.mesesCreditoReales} meses) termina antes del contrato: no debe decir que continúa pagándose`)
+  }
+})
+
+verificar('creditoSobreviveAlContrato es consistente con mesesCreditoReales y la duración del contrato para todo abono, y es monótono (más abono nunca lo hace sobrevivir)', () => {
+  let anterior = true
+  for (const pct of [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5]) {
+    const m = calcularMetricas({ ...p, porcentajeAbonoCapital: pct, mesInicioAbonoCapital: 3 }, 0)
+    assert.ok(m.mesesCreditoReales !== null && m.mesesCreditoReales >= 1 && m.mesesCreditoReales <= p.mesesCreditoVehiculo)
+    assert.equal(m.creditoSobreviveAlContrato, mesesContratoReferencia(m) < m.mesesCreditoReales!, `abono ${pct * 100}%`)
+    assert.ok(!(m.creditoSobreviveAlContrato && !anterior), 'con más abono no puede volver a sobrevivir')
+    anterior = m.creditoSobreviveAlContrato
+  }
+})
+
+verificar('mesesCreditoReales: casos límite — Recursos Propios (sin crédito), abono que empieza después del plazo (no aplica) y plazo del crédito distinto', () => {
+  const rp = calcularMetricas({ ...p, modalidadAdquisicion: 'RECURSOS_PROPIOS' }, 0)
+  assert.equal(rp.mesesCreditoReales, null)
+  assert.equal(rp.creditoSobreviveAlContrato, false)
+  const tardio = calcularMetricas({ ...p, porcentajeAbonoCapital: 5, mesInicioAbonoCapital: 100 }, 0)
+  assert.equal(tardio.mesesCreditoReales, 72, 'un abono que nunca llega a aplicarse no acorta el crédito')
+  assert.equal(tardio.creditoSobreviveAlContrato, true)
+  const corto = calcularMetricas({ ...p, mesesCreditoVehiculo: 24 }, 0)
+  assert.equal(corto.mesesCreditoReales, 24)
+  assert.equal(corto.creditoSobreviveAlContrato, false, 'un crédito de 24 meses termina antes del contrato de ~35 meses')
+})
+
+verificar('el fix es aditivo: mesesCreditoReales/creditoSobreviveAlContrato no cambian ninguna otra cifra (referencia con y sin abono)', () => {
+  assert.equal(Math.round(calcularMetricas(p, 0).resultadoNeto), 16_003_556)
+  assert.equal(Math.round(calcularMetricas(p, 0).flujoDeCajaNeto), 5_677_080)
+  assert.equal(calcularMetricas(p, 0).paybackFlujoContractualCompleto, 87)
+})
+
 console.log(`\n${casos} casos verificados, todos OK.`)
