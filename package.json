@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "verificar:presupuesto": "tsc -p src/lib/domain/presupuesto/tsconfig.verificacion.json && node .verificacion-presupuesto/presupuesto/verificacion.js && node .verificacion-presupuesto/presupuesto/verificacionModeloVigente.js",
-    "verificar:seguros": "tsc -p src/lib/domain/seguros/tsconfig.verificacion.json && node .verificacion-seguros/verificacion.js"
+    "verificar:seguros": "tsc -p src/lib/domain/seguros/tsconfig.verificacion.json && node .verificacion-seguros/verificacion.js",
+    "verificar:linea-base": "tsc -p src/lib/domain/presupuesto/tsconfig.verificacion.json && node .verificacion-presupuesto/presupuesto/verificacionLineaBase.js",
+    "verificar:financiero": "npm run verificar:presupuesto && npm run verificar:seguros && node .verificacion-presupuesto/presupuesto/verificacionLineaBase.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

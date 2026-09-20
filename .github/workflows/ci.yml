@@ -40,6 +40,14 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
+      # Red de seguridad financiera de KAI-29 (spec.md 33): las dos suites del modelo
+      # de presupuesto, las del seguro y la comparacion de las 50 combinaciones de
+      # escenarios contra la linea base versionada (lineaBase.json). Es bloqueante y
+      # va DENTRO de este job para no cambiar el nombre del check que exige la
+      # proteccion de la rama. CI nunca regenera la linea base.
+      - name: Verificaciones financieras (KAI-29) -- bloqueante
+        run: npm run verificar:financiero
+
       - name: Build (incluye tsc) -- bloqueante
         run: npm run build
         env:
