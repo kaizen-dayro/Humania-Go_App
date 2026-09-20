@@ -15,8 +15,12 @@
 // - Vencimiento el día indicado de cada mes (decisión 15): las fechas
 //   siguientes conservan el mismo día del mes; nunca se suman 30 días.
 // - NO define qué ocurre si el vencimiento cae en día no hábil ni si el día
-//   no existe en el mes (R15, BLOQUEADA): en vez de inventar una regla, se
-//   rechaza cualquier día mayor a 28, donde esa duda podría aparecer.
+//   no existe en el mes (R15, BLOQUEADA). Esa duda solo afecta a las FECHAS,
+//   nunca a los importes: por eso un día 29-31 no se rechaza (el día es un dato
+//   informativo y no puede tumbar la calculadora), pero tampoco se inventa un
+//   calendario (ni último día del mes, ni día anterior/siguiente, ni
+//   desbordamiento): con día > 28 no se derivan fechas a partir de la segunda
+//   cuota; solo se conserva la fecha de la primera cuota si fue informada.
 // - `costoFinancieroNominalTotal` es solo la diferencia entre la suma
 //   nominal de las cuotas y el valor financiado (spec.md 28.5): NO se llama
 //   ni se trata como interés.
@@ -93,7 +97,13 @@ function parseFecha(valor: string, nombre: string): FechaCivil {
 
 const dos = (n: number) => String(n).padStart(2, '0')
 
-/** Suma meses de calendario conservando el día (válido porque el día es ≤ 28). */
+/**
+ * Día más alto que existe en todos los meses del año. Solo con un día ≤ 28 se pueden derivar las
+ * fechas de las cuotas siguientes sin una regla de calendario (R15, pendiente).
+ */
+const DIA_MAXIMO_EXISTENTE_EN_TODOS_LOS_MESES = 28
+
+/** Suma meses de calendario conservando el día (solo se usa con día ≤ 28, o sin sumar meses). */
 function sumarMeses(base: FechaCivil, meses: number): string {
   const total = base.m - 1 + meses
   const y = base.y + Math.floor(total / 12)
@@ -124,11 +134,6 @@ export function generarCronogramaNominal(entrada: EntradaCronogramaNominal): Cro
   if (!Number.isInteger(diaVencimiento) || diaVencimiento < 1 || diaVencimiento > 31) {
     throw new RangeError(`diaVencimiento debe ser un entero entre 1 y 31 (recibido: ${diaVencimiento})`)
   }
-  if (diaVencimiento > 28) {
-    throw new RangeError(
-      `diaVencimiento ${diaVencimiento}: la regla para fechas inexistentes en algún mes está PENDIENTE (R15); no se inventa`,
-    )
-  }
   exigirNoNegativo(entrada.pagoInicial, 'pagoInicial')
   exigirNoNegativo(entrada.gravamen4x1000, 'gravamen4x1000')
   exigirNoNegativo(entrada.valorFinanciado, 'valorFinanciado')
@@ -148,9 +153,18 @@ export function generarCronogramaNominal(entrada: EntradaCronogramaNominal): Cro
     advertencias.push('fecha_primera_cuota PENDIENTE: las cuotas se identifican por índice relativo, sin fecha.')
   }
 
+  // Con día > 28 la fecha de las cuotas siguientes dependería de una regla de calendario que no está
+  // documentada (R15): esas cuotas quedan SIN_FECHA. Los importes y totales no dependen del día.
+  const fechasDerivables = diaVencimiento <= DIA_MAXIMO_EXISTENTE_EN_TODOS_LOS_MESES
+  if (!fechasDerivables) {
+    advertencias.push(
+      `Día de vencimiento ${diaVencimiento} (mayor a 28): la regla para los meses en que ese día no existe (R15) está PENDIENTE; no se derivan fechas de cuotas a partir de la segunda.`,
+    )
+  }
+
   const cuotas: CuotaNominal[] = []
   for (let i = 1; i <= numeroCuotas; i++) {
-    const fecha = base ? sumarMeses(base, i - 1) : null
+    const fecha = base && (i === 1 || fechasDerivables) ? sumarMeses(base, i - 1) : null
     cuotas.push({ indice: i, monto: redondear2(valorCuota), fecha, estado: fecha ? 'CON_FECHA' : 'SIN_FECHA' })
   }
   const totalCuotasNominal = redondear2(valorCuota * numeroCuotas)

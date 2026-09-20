@@ -292,12 +292,52 @@ verificar('banner: solo lo activan datos que entran al cálculo; la cotización 
 })
 
 verificar('una cotización cuyo cronograma no es válido se informa en el resultado y se rechaza en la validación (no se corrige)', () => {
-  const cot = cotizacionDesdeRegistro({ ...REGISTRO_COTIZACION, dia_vencimiento: 31 })!
+  const cot = cotizacionDesdeRegistro({ ...REGISTRO_COTIZACION, numero_cuotas: 0 })!
   const conError: ParametrosPresupuesto = { ...p, seguro: { ...p.seguro, cotizacion: cot } }
   const m = calcularMetricas(conError, 0)
   assert.equal(m.seguroNominal?.cronograma, null)
-  assert.match(m.seguroNominal?.error ?? '', /R15/)
+  assert.match(m.seguroNominal?.error ?? '', /numeroCuotas/)
   assert.ok(validarParametros(conError).some((e) => e.startsWith('seguro.cotizacion')))
+})
+
+// ===== H2: el día de vencimiento del seguro nunca tumba la calculadora =====
+// La base de datos acepta un día 1-31; la regla de calendario para días inexistentes (R15) sigue pendiente y no se inventa.
+
+verificar('H2: con día de vencimiento 1-31 la validación no bloquea la calculadora y ningún indicador cambia', () => {
+  const referencia = calcularMetricas(p, 0)
+  for (let dia = 1; dia <= 31; dia++) {
+    const cot = cotizacionDesdeRegistro({ ...REGISTRO_COTIZACION, dia_vencimiento: dia })!
+    const conDia: ParametrosPresupuesto = { ...p, seguro: { ...p.seguro, cotizacion: cot } }
+    assert.deepEqual(validarParametros(conDia), [], `día ${dia}: sin errores de validación`)
+    const m = calcularMetricas(conDia, 0)
+    assert.equal(m.seguroNominal?.error, null, `día ${dia}`)
+    assert.deepEqual(escalares(m), escalares(referencia), `día ${dia}: los indicadores no dependen del día`)
+    assert.deepEqual(m.flujo, referencia.flujo, `día ${dia}`)
+  }
+})
+
+verificar('H2: con día 29, 30 o 31 el cronograma nominal conserva cuotas y totales (10 × 155.839; 103.542; 1.820.947) y ninguna fecha inventada', () => {
+  for (const dia of [29, 30, 31]) {
+    const cot = cotizacionDesdeRegistro({ ...REGISTRO_COTIZACION, dia_vencimiento: dia })!
+    const c = calcularMetricas({ ...p, seguro: { ...p.seguro, cotizacion: cot } }, 0).seguroNominal?.cronograma
+    assert.equal(c?.cuotas.length, 10, `día ${dia}`)
+    assert.equal(c?.totalCuotasNominal, 1_558_390, `día ${dia}`)
+    assert.equal(c?.costoFinancieroNominalTotal, 103_542, `día ${dia}`)
+    assert.equal(c?.totalNominal, 1_820_947, `día ${dia}`)
+    assert.ok(c?.cuotas.every((q) => q.fecha === null && q.estado === 'SIN_FECHA'), `día ${dia}`)
+  }
+})
+
+verificar('H2: el presupuesto con día 29-31 se puede guardar tal cual (mismos parámetros válidos, mismo resultado que sin día especial) en todas las modalidades', () => {
+  for (const modalidad of ['CREDITO', 'RECURSOS_PROPIOS'] as const) {
+    for (const dia of [29, 30, 31]) {
+      const cot = cotizacionDesdeRegistro({ ...REGISTRO_COTIZACION, dia_vencimiento: dia })!
+      const base = { ...p, modalidadAdquisicion: modalidad, porcentajeAbonoCapital: 2 }
+      const conDia: ParametrosPresupuesto = { ...base, seguro: { ...base.seguro, cotizacion: cot } }
+      assert.deepEqual(validarParametros(conDia), [], `${modalidad} día ${dia}`)
+      assert.deepEqual(escalares(calcularMetricas(conDia, 0)), escalares(calcularMetricas(base, 0)), `${modalidad} día ${dia}`)
+    }
+  }
 })
 
 // ===== D. Validación y compatibilidad con presupuestos guardados =====

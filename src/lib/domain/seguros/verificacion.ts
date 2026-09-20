@@ -120,9 +120,59 @@ verificar('una fecha de primera cuota con día distinto al de vencimiento se rec
   assert.throws(() => generarCronogramaNominal({ ...COTIZACION, fechaPrimeraCuota: '2027-01-06' }), /no coincide con el día de vencimiento/)
 })
 
-verificar('día de vencimiento > 28 se rechaza: la regla de fechas inexistentes (R15) está PENDIENTE', () => {
-  assert.throws(() => generarCronogramaNominal({ ...COTIZACION, diaVencimiento: 31 }), /R15/)
-  assert.throws(() => generarCronogramaNominal({ ...COTIZACION, diaVencimiento: 29 }), /R15/)
+// ===== H2: el día de vencimiento informado nunca debe impedir el cronograma nominal =====
+// La base de datos acepta 1-31. La regla de calendario para meses en que el día no existe (R15) sigue
+// PENDIENTE: no se inventa (ni último día del mes, ni día anterior/siguiente, ni desbordamiento).
+
+verificar('H2: todo día 1-31 produce cronograma nominal (nunca lanza) con los mismos importes y totales', () => {
+  const referencia = generarCronogramaNominal(COTIZACION)
+  for (let dia = 1; dia <= 31; dia++) {
+    const c = generarCronogramaNominal({ ...COTIZACION, diaVencimiento: dia })
+    assert.equal(c.cuotas.length, 10, `día ${dia}`)
+    assert.ok(c.cuotas.every((x) => x.monto === 155_839), `día ${dia}`)
+    assert.equal(c.totalCuotasNominal, 1_558_390, `día ${dia}`)
+    assert.equal(c.costoFinancieroNominalTotal, 103_542, `día ${dia}`)
+    assert.equal(c.pagoInicial?.total, 262_557, `día ${dia}`)
+    assert.equal(c.totalNominal, 1_820_947, `día ${dia}`)
+    assert.deepEqual(c.pagoInicial, referencia.pagoInicial, `día ${dia}`)
+  }
+})
+
+verificar('H2: con día 29, 30 o 31 y sin fecha de primera cuota, las 10 cuotas quedan SIN_FECHA y no se inventa ninguna fecha', () => {
+  for (const dia of [29, 30, 31]) {
+    const c = generarCronogramaNominal({ ...COTIZACION, diaVencimiento: dia })
+    assert.ok(c.cuotas.every((x) => x.fecha === null && x.estado === 'SIN_FECHA'), `día ${dia}`)
+    assert.ok(c.advertencias.some((a) => /R15/.test(a)), `día ${dia}: la regla pendiente queda advertida`)
+  }
+})
+
+verificar('H2: con día > 28 y fecha de primera cuota informada solo se conserva esa fecha; las siguientes no se derivan (sin rollover ni ajuste)', () => {
+  const c = generarCronogramaNominal({ ...COTIZACION, diaVencimiento: 31, fechaPrimeraCuota: '2026-10-31' })
+  assert.deepEqual(
+    c.cuotas.map((x) => [x.indice, x.fecha, x.estado]).slice(0, 3),
+    [
+      [1, '2026-10-31', 'CON_FECHA'],
+      [2, null, 'SIN_FECHA'],
+      [3, null, 'SIN_FECHA'],
+    ],
+  )
+  assert.equal(c.cuotas.filter((x) => x.fecha !== null).length, 1, 'ninguna otra fecha se inventa (ni 30-nov, ni 1-dic, ni último día del mes)')
+  assert.equal(c.totalNominal, 1_820_947)
+})
+
+verificar('H2: con día ≤ 28 las fechas se siguen derivando exactamente igual que antes (sin cambio de comportamiento)', () => {
+  const c = generarCronogramaNominal({ ...COTIZACION, diaVencimiento: 28, fechaPrimeraCuota: '2026-12-28' })
+  assert.deepEqual(
+    c.cuotas.map((x) => x.fecha),
+    ['2026-12-28', '2027-01-28', '2027-02-28', '2027-03-28', '2027-04-28', '2027-05-28', '2027-06-28', '2027-07-28', '2027-08-28', '2027-09-28'],
+  )
+  assert.ok(!c.advertencias.some((a) => /R15/.test(a)), 'sin advertencia R15 cuando el día existe en todos los meses')
+})
+
+verificar('H2: lo que sigue siendo inválido sigue rechazándose (día fuera de 1-31 o no entero)', () => {
+  for (const dia of [0, -1, 32, 45, 2.5, Number.NaN]) {
+    assert.throws(() => generarCronogramaNominal({ ...COTIZACION, diaVencimiento: dia }), /diaVencimiento/, String(dia))
+  }
 })
 
 verificar('entradas inválidas se rechazan explícitamente (nunca 0 ni valores por defecto silenciosos)', () => {
@@ -197,10 +247,19 @@ verificar('adaptador: si falta un dato indispensable del cronograma no hay cotiz
 })
 
 verificar('adaptador: un dato inválido se informa como error del cronograma, no se corrige ni lanza', () => {
-  const c = cotizacionDesdeRegistro({ ...REGISTRO, dia_vencimiento: 31 })!
+  const c = cotizacionDesdeRegistro({ ...REGISTRO, numero_cuotas: 0 })!
   const r = calcularCronogramaSeguro(c)
   assert.equal(r.cronograma, null)
-  assert.match(r.error ?? '', /R15/)
+  assert.match(r.error ?? '', /numeroCuotas/)
+})
+
+verificar('H2 adaptador: un día de vencimiento 29, 30 o 31 (que la base de datos acepta) produce cronograma, sin error', () => {
+  for (const dia of [29, 30, 31]) {
+    const r = calcularCronogramaSeguro(cotizacionDesdeRegistro({ ...REGISTRO, dia_vencimiento: dia })!)
+    assert.equal(r.error, null, `día ${dia}`)
+    assert.equal(r.cronograma?.totalCuotasNominal, 1_558_390, `día ${dia}`)
+    assert.equal(r.cronograma?.totalNominal, 1_820_947, `día ${dia}`)
+  }
 })
 
 // ===== Selección de la financiación vigente (lectura del servidor) =====
@@ -330,6 +389,18 @@ verificar('vista: con fecha_primera_cuota NULL muestra "Fecha de la primera cuot
   const conFecha = cotizacionDesdeRegistro({ ...REGISTRO_CARGADO, fecha_primera_cuota: '2026-11-05' })!
   const v = construirVistaCotizacionSeguro(conFecha, calcularCronogramaSeguro(conFecha))!
   assert.equal(v.fechaPrimeraCuota, 'Fecha de la primera cuota: 05-11-2026')
+})
+
+verificar('H2 vista: con día de vencimiento 29, 30 o 31 la tarjeta se muestra completa (mismas etiquetas, cuotas y totales), con el día tal como se informó', () => {
+  for (const dia of [29, 30, 31]) {
+    const cot = cotizacionDesdeRegistro({ ...REGISTRO_CARGADO, dia_vencimiento: dia })!
+    const vista = construirVistaCotizacionSeguro(cot, calcularCronogramaSeguro(cot))
+    assert.ok(vista, `día ${dia}: la vista no puede desaparecer`)
+    assert.deepEqual(vista.filas.map((f) => f.etiqueta), VISTA.filas.map((f) => f.etiqueta), `día ${dia}`)
+    assert.deepEqual(vista.totales, VISTA.totales, `día ${dia}: los totales no dependen del día`)
+    assert.equal(vista.filas.find((f) => f.etiqueta === 'Día de vencimiento')?.valor, dia)
+    assert.equal(vista.fechaPrimeraCuota, VISTA.fechaPrimeraCuota, `día ${dia}: la fecha sigue "Pendiente", sin fecha inventada`)
+  }
 })
 
 verificar('vista (presupuesto sin cotización): sin bloque cuando el presupuesto no tiene cotización (cualquier estado de lectura la deja en null) o su cronograma no es válido', () => {
