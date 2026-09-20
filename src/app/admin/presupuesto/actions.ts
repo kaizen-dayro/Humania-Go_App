@@ -10,8 +10,8 @@
 import { createClient } from '@/utils/supabase/server'
 import { calcularMetricas } from '@/lib/domain/presupuesto/metricas'
 import { validarParametros, type ParametrosPresupuesto } from '@/lib/domain/presupuesto/parametros'
-
-const FINANCIAL_MODEL_VERSION = 'Humania Go Financial Model v1.0'
+import { FINANCIAL_MODEL_VERSION } from '@/lib/domain/presupuesto/version'
+import { leerCotizacionSeguroVigente } from './cotizacionSeguro'
 
 async function requireSuperAdmin() {
   const supabase = await createClient()
@@ -25,10 +25,19 @@ async function requireSuperAdmin() {
   return { supabase, session, autorizado }
 }
 
-export async function guardarPresupuesto(parametros: ParametrosPresupuesto, semanasAplazatoriasUsadas: number, etiqueta?: string) {
+export async function guardarPresupuesto(parametrosCliente: ParametrosPresupuesto, semanasAplazatoriasUsadas: number, etiqueta?: string) {
   const { supabase, session, autorizado } = await requireSuperAdmin()
   if (!session) return { success: false, error: 'No autorizado.' }
   if (!autorizado) return { success: false, error: 'No autorizado: solo un SUPER_ADMIN puede guardar presupuestos.' }
+
+  // La cotización del seguro es INFORMATIVA (no entra a ningún indicador) y la base de datos es la
+  // autoridad: se descarta la que traiga el cliente y se relee aquí (regla 1 de CLAUDE.md).
+  const lecturaCotizacion = await leerCotizacionSeguroVigente(supabase)
+  if (lecturaCotizacion.estado === 'ERROR') console.error('No se pudo leer la cotización del seguro al guardar:', lecturaCotizacion.mensaje)
+  const parametros: ParametrosPresupuesto = {
+    ...parametrosCliente,
+    seguro: { ...parametrosCliente.seguro, cotizacion: lecturaCotizacion.cotizacion },
+  }
 
   const errores = validarParametros(parametros)
   if (errores.length > 0) {
@@ -70,6 +79,9 @@ export async function guardarPresupuesto(parametros: ParametrosPresupuesto, sema
     resultadoNeto: resultados.resultadoNeto,
     flujoDeCajaNeto: resultados.flujoDeCajaNeto,
     margenVentaActivo: resultados.margenVentaActivo,
+    // Marcado aditivo (spec.md 27.4): las filas guardadas antes de este campo lo
+    // tienen ausente y se consideran modelo legacy; nunca se reescriben.
+    datosNoConfirmados: resultados.datosNoConfirmados,
   }
   const { flujo } = resultados
   const flujoSinSeries = {

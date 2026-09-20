@@ -25,7 +25,7 @@ export function calcularAdquisicionActivo(p: ParametrosPresupuesto): Adquisicion
 }
 
 export interface FlujoContractual {
-  /** D12 CERRADA: duración real del contrato — nunca mesesContrato (spec.md 19.18.2). */
+  /** D12 CERRADA: duración real del contrato — nunca mesesCreditoVehiculo (spec.md 19.18.2). */
   duracionContratoSemanas: number
   adquisicion: AdquisicionActivo
   /** Capa 1 (D13) — incluye la cuota final de adquisición (D14, spec.md 19.19.1). */

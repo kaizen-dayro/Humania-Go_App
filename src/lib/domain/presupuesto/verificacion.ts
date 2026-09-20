@@ -5,6 +5,13 @@
 // (dependencia ya existente, ninguna nueva) y se ejecuta con node.
 //
 //   npm run verificar:presupuesto   (desde web/)
+//
+// SUITE DEL MODELO LEGACY (spec.md 29): estos casos usan el escenario de
+// referencia, que conserva el modelo anterior del seguro
+// (seguro.modo = LEGACY_NO_CONFIRMADO, valores en seguroLegacy.ts). Fijan las
+// cifras históricas y actúan como regresión: NO prueban el modelo vigente.
+// Las pruebas del modelo vigente (seguro desacoplado, SIN_MODELAR, cotización
+// informativa) están en verificacionModeloVigente.ts.
 
 import assert from 'node:assert/strict'
 import { amortizarCreditoConAbono } from './amortizacion'
@@ -14,11 +21,14 @@ import {
   PARAMETROS_REFERENCIA,
   PORCENTAJE_ABONO_CAPITAL_MAXIMO,
   equityConductorSemanal,
+  conSeguroLegacy,
   flujoOperativoHumaniaSemanal,
   inversionInicial,
   recursosPropiosEfectivos,
   validarParametros,
+  type ParametrosPresupuesto,
 } from './parametros'
+import { FINANCIAL_MODEL_VERSION } from './version'
 
 let casos = 0
 function verificar(nombre: string, fn: () => void) {
@@ -140,7 +150,7 @@ verificar('otrosCostosHumaniaAnuales se aplica de forma consistente en el snapsh
 
 verificar('modalidad RECURSOS_PROPIOS: inversión inicial sin crédito ni financiación del seguro (pedido de Humania Go, 2026-09-01)', () => {
   const pRecursosPropios = { ...p, modalidadAdquisicion: 'RECURSOS_PROPIOS' as const }
-  const esperado = p.precioCompra + p.traspaso + p.principalFinanciacionSeguro + p.otrosCostosInicialesRecursosPropios + p.soatAnual + p.tecnomecanicaAnual + p.impuestosAnuales
+  const esperado = p.precioCompra + p.traspaso + p.seguro.legacy.principalFinanciacion + p.otrosCostosInicialesRecursosPropios + p.soatAnual + p.tecnomecanicaAnual + p.impuestosAnuales
   assert.equal(inversionInicial(pRecursosPropios), esperado)
   assert.equal(recursosPropiosEfectivos(pRecursosPropios), esperado, 'en RECURSOS_PROPIOS, el 100% de la inversión inicial es capital propio')
 })
@@ -202,7 +212,7 @@ verificar('abono a capital (30%, desde la cuota 3) reduce el plazo y ahorra inte
   const m = calcularMetricas(pConAbono, 0)
   const abono = m.amortizacionConAbono
   assert.ok(abono !== null)
-  assert.ok(abono!.mesesReales < p.mesesContrato, 'el abono debe reducir el plazo real por debajo del original')
+  assert.ok(abono!.mesesReales < p.mesesCreditoVehiculo, 'el abono debe reducir el plazo real por debajo del original')
   assert.ok(abono!.mesesAhorrados > 0)
   assert.ok(abono!.ahorroIntereses > 0)
   // Reconciliación: interesTotalSinAbono debe coincider con el total de la amortización normal (mismo crédito)
@@ -248,12 +258,12 @@ verificar('validarParametros: el tope del abono a capital es 500% (0 y 5 válido
 verificar('abono 100%-500%: el crédito se cancela exacto, sin saldos negativos ni NaN, en cualquier mes de inicio', () => {
   for (const pct of pctsAltos) {
     for (const mesInicioAbonoCapital of mesesInicio) {
-      const a = amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesContrato, pct, mesInicioAbonoCapital)
+      const a = amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesCreditoVehiculo, pct, mesInicioAbonoCapital)
       const etiqueta = `pct=${pct * 100}% inicio=${mesInicioAbonoCapital}`
       const ultimo = a.cronograma[a.cronograma.length - 1]
       assert.equal(ultimo.saldoFinal, 0, `${etiqueta}: el saldo final debe ser 0`)
-      assert.ok(a.mesesReales >= 1 && a.mesesReales <= p.mesesContrato, `${etiqueta}: mesesReales fuera de rango`)
-      assert.equal(a.mesesAhorrados, p.mesesContrato - a.mesesReales)
+      assert.ok(a.mesesReales >= 1 && a.mesesReales <= p.mesesCreditoVehiculo, `${etiqueta}: mesesReales fuera de rango`)
+      assert.equal(a.mesesAhorrados, p.mesesCreditoVehiculo - a.mesesReales)
       // Capital total pagado = principal (tolerancia de 1 peso, la misma que usa el motor para "saldo cero")
       const capitalPagado = a.cronograma.reduce((acc, c) => acc + c.capitalTotal, 0)
       assert.ok(Math.abs(capitalPagado - p.principalCreditoBancario) < 1, `${etiqueta}: capital pagado ${capitalPagado} != principal`)
@@ -276,11 +286,11 @@ verificar('abono 100%-500%: el crédito se cancela exacto, sin saldos negativos 
 
 verificar('abono 500% desde la cuota 1: coincide con la fórmula cerrada S_n = P(1+i)^n − 6C((1+i)^n − 1)/i (verificación independiente del bucle)', () => {
   const pct = 5
-  const a = amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesContrato, pct, 1)
+  const a = amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesCreditoVehiculo, pct, 1)
   const i = Math.pow(1 + p.tasaEfectivaAnualCredito, 1 / 12) - 1
   const C = a.cuotaMensualOriginal
   // Reconstrucción independiente de la cuota francesa (no reutiliza el código del motor)
-  const cuotaIndependiente = (p.principalCreditoBancario * i) / (1 - Math.pow(1 + i, -p.mesesContrato))
+  const cuotaIndependiente = (p.principalCreditoBancario * i) / (1 - Math.pow(1 + i, -p.mesesCreditoVehiculo))
   assert.ok(Math.abs(C - cuotaIndependiente) < 1e-6)
   // Cada mes completo (no el último, que se recorta al saldo): capital ordinario C−interés + abono 5C
   // → saldo_n = saldo_{n-1}(1+i) − (1+pct)C, cuya solución cerrada es la de arriba.
@@ -300,7 +310,7 @@ verificar('abono a capital: más porcentaje nunca alarga el plazo ni sube el int
   let mesesPrevios = Infinity
   let interesPrevio = Infinity
   for (const pct of [0.1, 0.5, 1, 1.5, 2, 3, 4, 5]) {
-    const a = amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesContrato, pct, 3)
+    const a = amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesCreditoVehiculo, pct, 3)
     assert.ok(a.mesesReales <= mesesPrevios, `pct=${pct * 100}%: el plazo real no debe crecer`)
     assert.ok(a.interesTotalConAbono <= interesPrevio + 1e-6, `pct=${pct * 100}%: el interés total no debe crecer`)
     mesesPrevios = a.mesesReales
@@ -309,7 +319,7 @@ verificar('abono a capital: más porcentaje nunca alarga el plazo ni sube el int
 })
 
 verificar('abono 500%: la contabilidad del resumen cuadra (interés + principal = total pagado; ahorro = sin abono − con abono; suma de pagos = total pagado)', () => {
-  const a = amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesContrato, 5, 3)
+  const a = amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesCreditoVehiculo, 5, 3)
   assert.ok(Math.abs(a.totalPagado - (a.interesTotalConAbono + p.principalCreditoBancario)) < 1e-6)
   assert.ok(Math.abs(a.ahorroIntereses - (a.interesTotalSinAbono - a.interesTotalConAbono)) < 1e-6)
   assert.ok(a.ahorroIntereses > 0)
@@ -321,9 +331,9 @@ verificar('abono 500%: la contabilidad del resumen cuadra (interés + principal 
 
 verificar('abono 500% en casos límite: inicio tras el último mes y tasa baja no rompen nada', () => {
   // mes de inicio mayor que el plazo → nunca aplica, idéntico a no abonar
-  const sinAplicar = amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesContrato, 5, p.mesesContrato + 10)
+  const sinAplicar = amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesCreditoVehiculo, 5, p.mesesCreditoVehiculo + 10)
   assert.equal(sinAplicar.totalAbonosExtra, 0)
-  assert.equal(sinAplicar.mesesReales, p.mesesContrato)
+  assert.equal(sinAplicar.mesesReales, p.mesesCreditoVehiculo)
   assert.equal(sinAplicar.cronograma[sinAplicar.cronograma.length - 1].saldoFinal, 0)
   // Crédito de 3 meses (vale ~2,8 cuotas) con abono de 500% desde la cuota 1: el abono se recorta y se cancela en el mes 1
   const corto = amortizarCreditoConAbono(1_000_000, 0.1, 3, 5, 1)
@@ -347,8 +357,8 @@ verificar('calcularMetricas con abono 500%: sin NaN, costos financieros = intere
     // El contrato dura 152 semanas (~35 meses) y con 500% el crédito ya está pagado antes: el costo al cierre es el total del cronograma
     assert.ok(a!.mesesReales < 35)
     const seguroMeses = Math.floor(conAbono.flujo.duracionContratoSemanas / (p.semanasPorAno / p.mesesPorAno))
-    const seguroRent = (p.costoFinancieroSeguroEstimado / p.mesesContrato) * seguroMeses
-    const seguroCaja = ((p.principalFinanciacionSeguro + p.costoFinancieroSeguroEstimado) / p.mesesContrato) * seguroMeses
+    const seguroRent = (p.seguro.legacy.costoFinancieroEstimado / p.seguro.legacy.plazoMeses) * seguroMeses
+    const seguroCaja = ((p.seguro.legacy.principalFinanciacion + p.seguro.legacy.costoFinancieroEstimado) / p.seguro.legacy.plazoMeses) * seguroMeses
     assert.ok(Math.abs(conAbono.costosFinancierosRentabilidad - (a!.interesTotalConAbono + seguroRent)) < 1e-4)
     assert.ok(Math.abs(conAbono.costosFinancierosCaja - (a!.totalPagado + seguroCaja)) < 1e-4)
     // El abono reduce el interés (rentabilidad) y mejora el resultado neto
@@ -364,6 +374,90 @@ verificar('calcularMetricas con abono 500%: sin NaN, costos financieros = intere
     const pbSin = sinAbono.paybackFinancieroRentabilidadExtrapolado ?? Infinity
     assert.ok(pbCon <= pbSin, 'el abono nunca debe atrasar el payback financiero')
   }
+})
+
+// ===== Marcado aditivo de datos no confirmados (2026-09-20) =====
+// spec.md 25.4, 27.4; plan.md 12.5 M1/M3/M7/M8. El marcado NO cambia ninguna
+// cifra: los 30 casos anteriores (que fijan los valores legacy) siguen
+// pasando sin modificarse y actúan como regresión.
+
+verificar('datosNoConfirmados: el escenario de referencia lista los datos LEGACY del seguro (capital, costo y plazo acoplado)', () => {
+  const m = calcularMetricas(p, 0)
+  const campos = m.datosNoConfirmados.map((d) => d.campo).sort()
+  assert.deepEqual(campos, ['seguro.legacy.costoFinancieroEstimado', 'seguro.legacy.plazoMeses', 'seguro.legacy.principalFinanciacion'])
+  assert.ok(m.datosNoConfirmados.every((d) => d.estado === 'LEGACY_NO_CONFIRMADO' && d.origen === 'MODELO_LEGACY' && d.integradoEnCalculo))
+  const capital = m.datosNoConfirmados.find((d) => d.campo === 'seguro.legacy.principalFinanciacion')
+  assert.equal(capital?.clasificacionOrigen, 'RESIDUAL_NO_DETERMINADO')
+})
+
+verificar('datosNoConfirmados: en Recursos Propios solo interviene el capital (el costo financiero no entra)', () => {
+  const m = calcularMetricas({ ...p, modalidadAdquisicion: 'RECURSOS_PROPIOS' }, 0)
+  assert.deepEqual(m.datosNoConfirmados.map((d) => d.campo), ['seguro.legacy.principalFinanciacion'])
+})
+
+verificar('datosNoConfirmados: si el seguro no se usa (capital y costo en 0), no hay datos no confirmados que rotular', () => {
+  const m = calcularMetricas(conSeguroLegacy(p, { principalFinanciacion: 0, costoFinancieroEstimado: 0 }), 0)
+  assert.deepEqual(m.datosNoConfirmados, [])
+})
+
+// El mapa `indicadoresAfectados` se obtuvo empíricamente (spec.md 25.4). Esta prueba lo vigila: todo
+// indicador escalar que cambie al variar SOLO el dato debe estar declarado como afectado.
+function indicadoresQueCambian(base: ParametrosPresupuesto, alterado: ParametrosPresupuesto): string[] {
+  const a = calcularMetricas(base, 0) as unknown as Record<string, unknown>
+  const b = calcularMetricas(alterado, 0) as unknown as Record<string, unknown>
+  return Object.keys(a).filter((k) => {
+    const x = a[k]
+    const y = b[k]
+    const esEscalar = (v: unknown) => v === null || typeof v === 'number'
+    return esEscalar(x) && esEscalar(y) && x !== y && !(Number.isNaN(x) && Number.isNaN(y))
+  })
+}
+
+verificar('datosNoConfirmados: el mapa de indicadores afectados es veraz (Crédito: capital y costo del seguro)', () => {
+  const m = calcularMetricas(p, 0)
+  const declarados = (campo: string) => new Set(m.datosNoConfirmados.find((d) => d.campo === campo)?.indicadoresAfectados)
+  for (const delta of [1_000_000, -3_453_177]) {
+    const cambian = indicadoresQueCambian(p, conSeguroLegacy(p, { principalFinanciacion: p.seguro.legacy.principalFinanciacion + delta }))
+    assert.ok(cambian.length > 0, 'variar el capital debe cambiar algo')
+    for (const k of cambian) assert.ok(declarados('seguro.legacy.principalFinanciacion').has(k), `capital del seguro cambia "${k}" pero no está declarado`)
+  }
+  for (const nuevo of [0, 1_000_000, 5_000_000]) {
+    const cambian = indicadoresQueCambian(p, conSeguroLegacy(p, { costoFinancieroEstimado: nuevo }))
+    for (const k of cambian) assert.ok(declarados('seguro.legacy.costoFinancieroEstimado').has(k), `costo del seguro cambia "${k}" pero no está declarado`)
+  }
+})
+
+verificar('datosNoConfirmados: el mapa de indicadores afectados es veraz (Recursos Propios: capital)', () => {
+  const rp = { ...p, modalidadAdquisicion: 'RECURSOS_PROPIOS' as const }
+  const declarados = new Set(calcularMetricas(rp, 0).datosNoConfirmados[0].indicadoresAfectados)
+  for (const delta of [1_000_000, -3_453_177]) {
+    const cambian = indicadoresQueCambian(rp, conSeguroLegacy(rp, { principalFinanciacion: rp.seguro.legacy.principalFinanciacion + delta }))
+    assert.ok(cambian.length > 0)
+    for (const k of cambian) assert.ok(declarados.has(k), `capital (Recursos Propios) cambia "${k}" pero no está declarado`)
+  }
+})
+
+verificar('regresión LEGACY: las cifras del escenario de referencia no cambian con el marcado (mismos valores que antes)', () => {
+  const m = calcularMetricas(p, 0)
+  assert.equal(Math.round(m.resultadoNeto), 16_003_556)
+  assert.equal(Math.round(m.flujoDeCajaNeto), 5_677_080)
+  assert.equal(Math.round(m.costosFinancierosRentabilidad), 17_738_444)
+  assert.equal(Math.round(m.costosFinancierosCaja), 28_064_920)
+  assert.equal(m.paybackFlujoContractualCompleto, 87)
+  assert.equal(m.inversionInicialTotal, 39_041_500)
+})
+
+verificar('datos reportados sin soporte NO entran a los parámetros de referencia ($262.557, 29% EA, cotización) — M8/decisión 16', () => {
+  const numeros = (o: unknown): number[] =>
+    typeof o === 'number' ? [o] : o && typeof o === 'object' ? Object.values(o).flatMap(numeros) : []
+  const valores = new Set(numeros(p))
+  for (const prohibido of [262_557, 0.29, 155_839, 1_454_848, 1_711_586, 256_738, 5_819, 103_542]) {
+    assert.ok(!valores.has(prohibido), `PARAMETROS_REFERENCIA no debe contener ${prohibido}`)
+  }
+})
+
+verificar('versión del modelo: se conserva v1.0 (solo hubo marcado aditivo; la matemática no cambió; M5b sigue abierta)', () => {
+  assert.equal(FINANCIAL_MODEL_VERSION, 'Humania Go Financial Model v1.0')
 })
 
 console.log(`\n${casos} casos verificados, todos OK.`)

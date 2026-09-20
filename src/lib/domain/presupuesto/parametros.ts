@@ -4,6 +4,9 @@
 // persistencia, sin dependencias de Next.js/Supabase (mismo patrón que
 // indiceSer.ts, KAI-27).
 
+import { calcularCronogramaSeguro, type CotizacionSeguro } from '../seguros/adaptador'
+import { SEGURO_LEGACY_REFERENCIA } from './seguroLegacy'
+
 /**
  * Modalidad de adquisición del activo — decisión pedida explícitamente
  * por Humania Go (2026-09-01): existen ambas posibilidades en el
@@ -13,6 +16,40 @@
  * sin amortización.
  */
 export type ModalidadAdquisicion = 'CREDITO' | 'RECURSOS_PROPIOS'
+
+/**
+ * Cómo entra el seguro al modelo (KAI-29, spec.md 29; las decisiones
+ * pendientes siguen abiertas):
+ * - LEGACY_NO_CONFIRMADO: el modelo anterior — capital, costo financiero
+ *   estimado y plazo propios de `seguro.legacy` (valores históricos NO
+ *   confirmados, aislados en `seguroLegacy.ts`). Alimenta el cálculo tal
+ *   como lo hacía antes, con el banner MODELO CON DATOS NO CONFIRMADOS.
+ * - SIN_MODELAR: el seguro queda FUERA del cálculo (ni capital, ni costo,
+ *   ni cuotas). No es un valor de negocio: es la ausencia de modelo hasta
+ *   que exista una integración financiera aprobada.
+ */
+export type ModoSeguro = 'LEGACY_NO_CONFIRMADO' | 'SIN_MODELAR'
+
+/**
+ * Datos del modelo anterior del seguro. El plazo es PROPIO del seguro: ya no
+ * se toma del plazo del crédito bancario (`mesesCreditoVehiculo`).
+ */
+export interface SeguroLegacyParametros {
+  principalFinanciacion: number
+  costoFinancieroEstimado: number
+  plazoMeses: number
+}
+
+export interface SeguroParametros {
+  modo: ModoSeguro
+  legacy: SeguroLegacyParametros
+  /**
+   * Datos nominales de la financiación vigente (dominio `seguros`), con el
+   * estado documental de cada dato. INFORMATIVO: no entra a ningún indicador
+   * (la integración financiera sigue pendiente). null = no hay cotización cargada.
+   */
+  cotizacion: CotizacionSeguro | null
+}
 
 export interface ParametrosPresupuesto {
   modalidadAdquisicion: ModalidadAdquisicion
@@ -32,14 +69,14 @@ export interface ParametrosPresupuesto {
   otrosCostosInicialesRecursosPropios: number
 
   // Capa B — financiación bancaria (D1, cerrada; solo aplica en
-  // modalidad CREDITO). mesesContrato es exclusivamente el plazo del
-  // crédito bancario, no la duración del contrato con el conductor
-  // (D12, spec.md 19.18.2).
+  // modalidad CREDITO). mesesCreditoVehiculo es exclusivamente el plazo del
+  // crédito bancario del vehículo: ni la duración del contrato con el
+  // conductor (D12, spec.md 19.18.2) ni el plazo del seguro (spec.md 29).
   principalCreditoBancario: number
-  principalFinanciacionSeguro: number
-  costoFinancieroSeguroEstimado: number
   tasaEfectivaAnualCredito: number
-  mesesContrato: number
+  mesesCreditoVehiculo: number
+  /** Seguro: separado del crédito del vehículo (spec.md 29). */
+  seguro: SeguroParametros
   /**
    * Abono extraordinario a capital, reducción de plazo (D15 CERRADA,
    * spec.md Sección 11/21, `Documentos/CAL/Amortizacion_Abono.xlsx`) —
@@ -92,10 +129,16 @@ export const PARAMETROS_REFERENCIA: ParametrosPresupuesto = {
   otrosCostosInicialesRecursosPropios: 0,
 
   principalCreditoBancario: 27_329_323,
-  principalFinanciacionSeguro: 3_453_177,
-  costoFinancieroSeguroEstimado: 2_500_000,
   tasaEfectivaAnualCredito: 0.268,
-  mesesContrato: 72,
+  mesesCreditoVehiculo: 72,
+  // El escenario de referencia conserva el modelo anterior del seguro (cifras oficiales sin
+  // cambio, spec.md 29.1). Los valores viven en seguroLegacy.ts; la cotización vigente no se
+  // hardcodea aquí: llega desde el dominio `seguros`.
+  seguro: {
+    modo: 'LEGACY_NO_CONFIRMADO',
+    legacy: { ...SEGURO_LEGACY_REFERENCIA },
+    cotizacion: null,
+  },
   porcentajeAbonoCapital: 0,
   mesInicioAbonoCapital: 3,
 
@@ -126,23 +169,47 @@ export const PARAMETROS_REFERENCIA: ParametrosPresupuesto = {
   mesesPorAno: 12,
 }
 
+/** Lo que el seguro aporta hoy al cálculo, según el modo (spec.md 29). */
+export interface SeguroEfectivo {
+  principal: number
+  costoFinancieroTotal: number
+  plazoMeses: number
+}
+
+/**
+ * Datos del seguro que realmente entran al cálculo: los del modelo LEGACY en
+ * modo LEGACY_NO_CONFIRMADO, y ceros en SIN_MODELAR. Nunca lee
+ * `mesesCreditoVehiculo` ni la cotización (informativa).
+ */
+export function seguroEfectivo(p: ParametrosPresupuesto): SeguroEfectivo {
+  if (p.seguro.modo === 'SIN_MODELAR') return { principal: 0, costoFinancieroTotal: 0, plazoMeses: 0 }
+  const { principalFinanciacion, costoFinancieroEstimado, plazoMeses } = p.seguro.legacy
+  return { principal: principalFinanciacion, costoFinancieroTotal: costoFinancieroEstimado, plazoMeses }
+}
+
+/** Copia de los parámetros con cambios en el modelo LEGACY del seguro (inmutable). */
+export function conSeguroLegacy(p: ParametrosPresupuesto, cambios: Partial<SeguroLegacyParametros>): ParametrosPresupuesto {
+  return { ...p, seguro: { ...p.seguro, legacy: { ...p.seguro.legacy, ...cambios } } }
+}
+
 /**
  * Inversión inicial total — depende de la modalidad de adquisición
  * (pedido explícito de Humania Go, 2026-09-01, ambas modalidades
  * existen en el negocio):
  * - CREDITO (D1, cerrada): capital propio + crédito + financiación del
  *   seguro + costos iniciales, año 1 de SOAT/Tecno/Impuestos incluido.
- * - RECURSOS_PROPIOS: todo pagado de contado (incluido el seguro,
- *   confirmado por el usuario — sin costo financiero adicional, D1/
- *   19.13.1-19.14.2: `principalFinanciacionSeguro` ya es el costo real
- *   del seguro antes de financiarlo) — sin crédito, sin intereses.
+ * - RECURSOS_PROPIOS: todo pagado de contado (incluido el seguro, sin
+ *   costo financiero adicional) — sin crédito, sin intereses. El capital
+ *   del seguro es el del modelo LEGACY (no confirmado; spec.md 25 y 26.5)
+ *   y solo entra si el modo es LEGACY_NO_CONFIRMADO.
  */
 export function inversionInicial(p: ParametrosPresupuesto): number {
+  const capitalSeguro = seguroEfectivo(p).principal
   if (p.modalidadAdquisicion === 'RECURSOS_PROPIOS') {
     return (
       p.precioCompra +
       p.traspaso +
-      p.principalFinanciacionSeguro +
+      capitalSeguro +
       p.otrosCostosInicialesRecursosPropios +
       p.soatAnual +
       p.tecnomecanicaAnual +
@@ -151,7 +218,7 @@ export function inversionInicial(p: ParametrosPresupuesto): number {
   }
   return (
     p.principalCreditoBancario +
-    p.principalFinanciacionSeguro +
+    capitalSeguro +
     p.capitalPropioDeclarado +
     p.soatAnual +
     p.tecnomecanicaAnual +
@@ -206,6 +273,31 @@ export function margenVentaActivo(p: ParametrosPresupuesto): number {
  */
 export const PORCENTAJE_ABONO_CAPITAL_MAXIMO = 5
 
+function validarSeguro(p: ParametrosPresupuesto): string[] {
+  const errores: string[] = []
+  // Una entrada malformada (p. ej. la forma plana anterior) se informa como error de validación; nunca lanza.
+  if (!p.seguro || typeof p.seguro !== 'object') return ['seguro es obligatorio (modo, legacy y cotizacion)']
+  const { modo, legacy, cotizacion } = p.seguro
+  if (modo !== 'LEGACY_NO_CONFIRMADO' && modo !== 'SIN_MODELAR') {
+    errores.push(`seguro.modo no es válido (recibido: ${String(modo)})`)
+  }
+  if (modo === 'LEGACY_NO_CONFIRMADO' && (!legacy || typeof legacy !== 'object')) {
+    errores.push('seguro.legacy es obligatorio en modo LEGACY_NO_CONFIRMADO')
+  } else if (modo === 'LEGACY_NO_CONFIRMADO') {
+    if (legacy.principalFinanciacion < 0) errores.push(`seguro.legacy.principalFinanciacion no puede ser negativo (recibido: ${legacy.principalFinanciacion})`)
+    if (legacy.costoFinancieroEstimado < 0) errores.push(`seguro.legacy.costoFinancieroEstimado no puede ser negativo (recibido: ${legacy.costoFinancieroEstimado})`)
+    // El plazo solo se usa (y solo se exige) donde se calcula el costo del seguro: modalidad CREDITO.
+    if (p.modalidadAdquisicion === 'CREDITO' && (!Number.isInteger(legacy.plazoMeses) || legacy.plazoMeses <= 0)) {
+      errores.push(`seguro.legacy.plazoMeses debe ser un entero mayor que 0 (recibido: ${legacy.plazoMeses})`)
+    }
+  }
+  if (cotizacion) {
+    const { error } = calcularCronogramaSeguro(cotizacion)
+    if (error) errores.push(`seguro.cotizacion no produce un cronograma nominal válido: ${error}`)
+  }
+  return errores
+}
+
 /** Rangos de validación (plan.md Sección 6) — nunca se acepta un valor fuera de rango silenciosamente. */
 export function validarParametros(p: ParametrosPresupuesto): string[] {
   const errores: string[] = []
@@ -221,7 +313,7 @@ export function validarParametros(p: ParametrosPresupuesto): string[] {
   // Solo exigibles en modalidad CREDITO — en RECURSOS_PROPIOS no hay
   // crédito bancario que financiar (pedido explícito de Humania Go).
   if (p.modalidadAdquisicion === 'CREDITO') {
-    positivos.push(['principalCreditoBancario', p.principalCreditoBancario], ['tasaEfectivaAnualCredito', p.tasaEfectivaAnualCredito], ['mesesContrato', p.mesesContrato])
+    positivos.push(['principalCreditoBancario', p.principalCreditoBancario], ['tasaEfectivaAnualCredito', p.tasaEfectivaAnualCredito], ['mesesCreditoVehiculo', p.mesesCreditoVehiculo])
   }
   for (const [nombre, valor] of positivos) {
     if (!(valor > 0)) errores.push(`${nombre} debe ser mayor que 0 (recibido: ${valor})`)
@@ -230,8 +322,6 @@ export function validarParametros(p: ParametrosPresupuesto): string[] {
   const noNegativos: [string, number][] = [
     ['traspaso', p.traspaso],
     ['capitalPropioDeclarado', p.capitalPropioDeclarado],
-    ['principalFinanciacionSeguro', p.principalFinanciacionSeguro],
-    ['costoFinancieroSeguroEstimado', p.costoFinancieroSeguroEstimado],
     ['otrosCostosInicialesRecursosPropios', p.otrosCostosInicialesRecursosPropios],
     ['ahorroSemanalConductor', p.ahorroSemanalConductor],
     ['bonoPatrimonialSemanal', p.bonoPatrimonialSemanal],
@@ -253,7 +343,8 @@ export function validarParametros(p: ParametrosPresupuesto): string[] {
   if (p.porcentajeAtribucionAbonosConductor < 0 || p.porcentajeAtribucionAbonosConductor > 100) {
     errores.push('porcentajeAtribucionAbonosConductor debe estar entre 0 y 100')
   }
-  if (!Number.isInteger(p.mesesContrato)) errores.push('mesesContrato debe ser un entero')
+  if (!Number.isInteger(p.mesesCreditoVehiculo)) errores.push('mesesCreditoVehiculo debe ser un entero')
+  errores.push(...validarSeguro(p))
   if (!Number.isInteger(p.soatPeriodicidadMeses) || p.soatPeriodicidadMeses <= 0) {
     errores.push('soatPeriodicidadMeses debe ser un entero mayor que 0')
   }
@@ -273,4 +364,31 @@ export function validarParametros(p: ParametrosPresupuesto): string[] {
   }
 
   return errores
+}
+
+/**
+ * Presupuestos guardados antes de spec.md 29 tienen los parámetros con forma
+ * plana (`mesesContrato`, `principalFinanciacionSeguro`,
+ * `costoFinancieroSeguroEstimado`) y con el plazo del seguro acoplado al del
+ * crédito. Esta función los lleva a la forma vigente SIN cambiar ningún
+ * resultado: el seguro queda en modo LEGACY_NO_CONFIRMADO con `plazoMeses`
+ * igual al `mesesContrato` de la fila original (lo que el motor usaba). Es
+ * idempotente: una entrada que ya tiene la forma vigente se devuelve igual.
+ */
+export function normalizarParametrosGuardados(bruto: Record<string, unknown>): ParametrosPresupuesto {
+  if ('seguro' in bruto && 'mesesCreditoVehiculo' in bruto) return bruto as unknown as ParametrosPresupuesto
+  const { mesesContrato, principalFinanciacionSeguro, costoFinancieroSeguroEstimado, ...resto } = bruto
+  return {
+    ...resto,
+    mesesCreditoVehiculo: mesesContrato,
+    seguro: {
+      modo: 'LEGACY_NO_CONFIRMADO',
+      legacy: {
+        principalFinanciacion: principalFinanciacionSeguro,
+        costoFinancieroEstimado: costoFinancieroSeguroEstimado,
+        plazoMeses: mesesContrato,
+      },
+      cotizacion: null,
+    },
+  } as unknown as ParametrosPresupuesto
 }

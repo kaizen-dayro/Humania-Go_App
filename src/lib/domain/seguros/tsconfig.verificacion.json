@@ -5,8 +5,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": true,
-    "rootDir": "..",
-    "outDir": "../../../../.verificacion-presupuesto"
+    "types": ["node"],
+    "outDir": "../../../../.verificacion-seguros"
   },
   "include": ["*.ts"]
 }
