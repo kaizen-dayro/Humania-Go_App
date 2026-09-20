@@ -14,6 +14,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { cotizacionDesdeRegistro, type FinanciacionSeguroRegistro } from '../seguros/adaptador'
+import { construirVistaCotizacionSeguro } from '../seguros/vistaCotizacion'
 import { amortizarCredito, cuotaAcumuladaAlMes, interesAcumuladoAlMes } from './amortizacion'
 import { hayDatosNoConfirmadosEnCalculo } from './datosNoConfirmados'
 import { calcularMetricas } from './metricas'
@@ -189,6 +190,84 @@ verificar('cotización: el cronograma nominal informativo sale del dominio segur
   assert.equal(c?.totalNominal, 1_820_947)
   assert.ok(c?.cuotas.every((q) => q.fecha === null && q.estado === 'SIN_FECHA'), 'sin fecha_primera_cuota no hay fechas')
   assert.equal(calcularMetricas(p, 0).seguroNominal, null, 'sin cotización no hay cronograma')
+})
+
+// ===== E. Crédito del vehículo ≠ financiación del seguro; presupuestos independientes (spec.md 36) =====
+// La financiación del seguro se muestra DENTRO de "Amortización del crédito", pero son obligaciones independientes:
+// mover el bloque en pantalla no cambia ningún cálculo, y ninguno de los dos modelos alimenta al otro.
+
+const REGISTRO_B: FinanciacionSeguroRegistro = {
+  ...REGISTRO_COTIZACION,
+  valor_financiado: 900_000,
+  pago_inicial: 150_000,
+  gravamen_4x1000: 3_600,
+  numero_cuotas: 12,
+  cuota_valor: 80_000,
+  dia_vencimiento: 15,
+  poliza: { valor_poliza: 1_050_000, estado_datos_campos: { valor_poliza: 'CONFIRMADO_POR_COTIZACION' } },
+}
+const conCotizacion = (base: ParametrosPresupuesto, r: FinanciacionSeguroRegistro): ParametrosPresupuesto => ({
+  ...base,
+  seguro: { ...base.seguro, cotizacion: cotizacionDesdeRegistro(r) },
+})
+
+verificar('presupuestos independientes: dos presupuestos con distinta cotización muestran valores distintos y ambos dan EXACTAMENTE los mismos indicadores que sin cotización', () => {
+  const abono = { ...p, porcentajeAbonoCapital: 2, mesInicioAbonoCapital: 3 }
+  for (const base of [p, abono, sinSeguro]) {
+    const sin = calcularMetricas(base, 0)
+    const a = calcularMetricas(conCotizacion(base, { ...REGISTRO_COTIZACION, poliza: { valor_poliza: 1_711_586, estado_datos_campos: null } }), 0)
+    const b = calcularMetricas(conCotizacion(base, REGISTRO_B), 0)
+    const vistaA = construirVistaCotizacionSeguro(a.seguroNominal ? cotizacionDesdeRegistro({ ...REGISTRO_COTIZACION, poliza: { valor_poliza: 1_711_586, estado_datos_campos: null } }) : null, a.seguroNominal)
+    const vistaB = construirVistaCotizacionSeguro(cotizacionDesdeRegistro(REGISTRO_B), b.seguroNominal)
+    assert.notDeepEqual(vistaA, vistaB, 'cada presupuesto muestra SU financiación')
+    assert.deepEqual(escalares(a), escalares(sin))
+    assert.deepEqual(escalares(b), escalares(sin))
+    assert.deepEqual(a.flujo, sin.flujo)
+    assert.deepEqual(b.flujo, sin.flujo)
+    assert.deepEqual(a.amortizacionNormal, sin.amortizacionNormal)
+    assert.deepEqual(b.amortizacionConAbono, sin.amortizacionConAbono)
+  }
+})
+
+verificar('crédito del vehículo y financiación del seguro son independientes: cambiar uno no altera el otro (cronogramas, capital, plazo ni tasa se mezclan)', () => {
+  const cot = cotizacionDesdeRegistro(REGISTRO_COTIZACION)!
+  const vista = (params: ParametrosPresupuesto) => construirVistaCotizacionSeguro(params.seguro.cotizacion, calcularMetricas(params, 0).seguroNominal)
+  const base = conCotizacion({ ...p, porcentajeAbonoCapital: 1, mesInicioAbonoCapital: 3 }, REGISTRO_COTIZACION)
+  const vistaBase = vista(base)
+  assert.ok(vistaBase)
+  // 1) Cambiar el crédito del vehículo (abono, plazo, principal, tasa) no cambia la financiación del seguro
+  for (const cambio of [
+    { porcentajeAbonoCapital: 5 },
+    { mesInicioAbonoCapital: 10 },
+    { mesesCreditoVehiculo: 60 },
+    { principalCreditoBancario: 20_000_000 },
+    { tasaEfectivaAnualCredito: 0.2 },
+  ]) {
+    assert.deepEqual(vista({ ...base, ...cambio }), vistaBase, JSON.stringify(cambio))
+  }
+  // 2) Cambiar la cotización o el modelo legacy del seguro no cambia el cronograma ni el resumen del crédito del vehículo
+  const solo = calcularMetricas(base, 0)
+  for (const otro of [conCotizacion(base, REGISTRO_B), conSeguroLegacy(base, { principalFinanciacion: 1, costoFinancieroEstimado: 1, plazoMeses: 12 }), { ...base, seguro: { ...base.seguro, modo: 'SIN_MODELAR' as const } }]) {
+    const m = calcularMetricas(otro, 0)
+    assert.deepEqual(m.amortizacionNormal, solo.amortizacionNormal)
+    assert.deepEqual(m.amortizacionConAbono, solo.amortizacionConAbono)
+    assert.equal(m.mesesCreditoReales, solo.mesesCreditoReales)
+  }
+  // 3) La vista de la financiación no depende del modelo legacy: cambiar sus valores no la toca
+  assert.deepEqual(vista(conSeguroLegacy(base, { principalFinanciacion: 1, costoFinancieroEstimado: 1, plazoMeses: 12 })), vistaBase)
+  assert.equal(cot.entrada.valorFinanciado, 1_454_848, 'la cotización conserva sus propios datos')
+})
+
+verificar('la financiación del seguro nunca se suma al crédito del vehículo: capital, plazo y costo de cada obligación permanecen separados', () => {
+  const m = calcularMetricas(conCotizacion(p, REGISTRO_COTIZACION), 0)
+  // El capital financiado del vehículo es solo el del crédito bancario; el del seguro legacy va aparte y la cotización no entra
+  assert.equal(m.financiacionBancaria, p.principalCreditoBancario)
+  assert.equal(m.principalFinanciacionSeguro, p.seguro.legacy.principalFinanciacion)
+  assert.notEqual(m.principalFinanciacionSeguro, 1_454_848, 'el valor financiado de la cotización no sustituye al capital legacy')
+  assert.equal(m.amortizacionNormal!.cronograma.length, p.mesesCreditoVehiculo)
+  assert.equal(m.seguroNominal!.cronograma!.cuotas.length, 10, 'el cronograma del seguro es el nominal de su cotización, no el del crédito')
+  const principalesCredito = m.amortizacionNormal!.cronograma.reduce((s, c) => s + c.abonoCapital, 0)
+  assert.ok(Math.abs(principalesCredito - p.principalCreditoBancario) < 1e-4, 'la amortización del crédito suma solo su propio principal')
 })
 
 verificar('datosNoConfirmados distingue LEGACY_NO_CONFIRMADO (integrado) de los datos de la cotización (no integrados, con su estado real)', () => {

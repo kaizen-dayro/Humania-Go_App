@@ -84,16 +84,18 @@ function Fila({ label, valor, destacado = false }: { label: string; valor: strin
 }
 
 /**
- * Tarjeta de SOLO LECTURA con los datos de la cotización del seguro (spec.md 34). Estrictamente
- * informativa: no calcula nada, no toca ningún indicador y muestra el estado documental de cada
- * dato tal como consta (nunca lo promueve). Los textos vienen aprobados desde `vistaCotizacion.ts`.
+ * Bloque de SOLO LECTURA "Financiación del seguro" dentro de "Amortización del crédito" (spec.md 36).
+ * Es una obligación INDEPENDIENTE del crédito del vehículo: no se suma ni se combina con él.
+ * Estrictamente informativo: no calcula nada, no toca ningún indicador y muestra el estado documental
+ * de cada dato tal como consta (nunca lo promueve). Los textos vienen aprobados de `vistaCotizacion.ts`.
  */
-function TarjetaCotizacionSeguro({ vista }: { vista: VistaCotizacionSeguro }) {
+function BloqueFinanciacionSeguro({ vista }: { vista: VistaCotizacionSeguro }) {
   const formato = (f: VistaCotizacionSeguro['filas'][number]) => (f.tipo === 'moneda' ? cop(f.valor as number) : String(f.valor))
   return (
-    <div data-tarjeta="cotizacion-seguro">
-      <Tarjeta titulo={vista.titulo}>
-        <p className="text-xs text-humania-gray/70 -mt-2 mb-4">{vista.subtitulo}</p>
+    <section data-bloque="financiacion-seguro" className="border border-neutral-200 rounded-md p-4">
+      <div>
+        <h4 className="text-sm font-bold text-humania-blue uppercase tracking-wide">{vista.titulo}</h4>
+        <p className="text-xs text-humania-gray/70 mt-1 mb-4">{vista.subtitulo}</p>
         <div>
           {vista.filas.map((f) => (
             <div key={f.etiqueta} className="flex items-baseline justify-between gap-4 py-2 border-b border-neutral-100 last:border-0">
@@ -114,8 +116,8 @@ function TarjetaCotizacionSeguro({ vista }: { vista: VistaCotizacionSeguro }) {
         </div>
         <p className="text-sm text-humania-gray mt-4">{vista.fechaPrimeraCuota}</p>
         <p className="text-xs text-humania-gray/70 mt-3">{vista.nota}</p>
-      </Tarjeta>
-    </div>
+      </div>
+    </section>
   )
 }
 
@@ -432,10 +434,11 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
     [parametros, semanasAplazatoriasUsadas, errores],
   )
   const veredicto = useMemo(() => (resultado ? calcularVeredicto(resultado) : null), [resultado])
-  // Tarjeta informativa de la cotización: solo con la lectura CARGADA (spec.md 34); no participa en ningún indicador.
+  // Financiación del seguro DE ESTE PRESUPUESTO (spec.md 36): sale solo de sus parámetros (`seguro.cotizacion`) y de su
+  // cronograma nominal; no es un valor global y no participa en ningún indicador.
   const vistaCotizacion = useMemo(
-    () => (resultado ? construirVistaCotizacionSeguro(estadoCotizacionSeguro, parametros.seguro.cotizacion, resultado.seguroNominal) : null),
-    [resultado, estadoCotizacionSeguro, parametros.seguro.cotizacion],
+    () => (resultado ? construirVistaCotizacionSeguro(parametros.seguro.cotizacion, resultado.seguroNominal) : null),
+    [resultado, parametros.seguro.cotizacion],
   )
 
   const setParam = <K extends ClaveNumericaParametros>(campo: K) => (valor: number) =>
@@ -530,7 +533,10 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
               <Fila label="Costo / inversión inicial" valor={cop(resultado.inversionInicialTotal)} destacado />
               <Fila label="Recursos propios de Humania" valor={cop(resultado.recursosPropios)} />
               <Fila label="Financiación bancaria" valor={cop(resultado.financiacionBancaria)} />
-              <Fila label="Financiación del seguro" valor={cop(resultado.principalFinanciacionSeguro)} />
+              <Fila
+                label={parametros.seguro.modo === 'LEGACY_NO_CONFIRMADO' ? 'Financiación del seguro (modelo anterior, legacy)' : 'Financiación del seguro'}
+                valor={cop(resultado.principalFinanciacionSeguro)}
+              />
               <Fila label="% financiado" valor={pct((resultado.financiacionBancaria + resultado.principalFinanciacionSeguro) / resultado.inversionInicialTotal)} />
               <Fila label="% capital propio" valor={pct(resultado.recursosPropios / resultado.inversionInicialTotal)} />
             </Tarjeta>
@@ -562,8 +568,6 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
               </div>
             </div>
           </Tarjeta>
-
-          {vistaCotizacion && <TarjetaCotizacionSeguro vista={vistaCotizacion} />}
 
           <Tarjeta titulo="Análisis detallado — payback (real dentro del contrato vs. extrapolado)">
             <div className="overflow-x-auto">
@@ -637,7 +641,12 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
               titulo="Amortización del crédito"
               subtitulo="Tabla completa mes a mes — normal y con abono a capital (D15). Con abono activo, los paybacks financieros de arriba ya usan este cronograma."
             >
-              <div className="space-y-8 pt-4">
+              <div className="space-y-6 pt-4">
+                <p className="text-xs text-humania-gray/70">
+                  Obligaciones financieras asociadas a este presupuesto. El crédito del vehículo y la financiación del seguro son independientes: no se suman ni se combinan.
+                </p>
+                <section data-bloque="credito-vehiculo" className="border border-neutral-200 rounded-md p-4 space-y-8">
+                <h4 className="text-sm font-bold text-humania-blue uppercase tracking-wide">Crédito del vehículo</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <CampoNumero
                     label="Porcentaje de abono a capital"
@@ -763,6 +772,8 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                     </div>
                   </SubColapsable>
                 )}
+                </section>
+                {vistaCotizacion && <BloqueFinanciacionSeguro vista={vistaCotizacion} />}
               </div>
             </Colapsable>
           )}
@@ -817,20 +828,6 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                   <h4 className="text-xs font-bold text-humania-gray/50 uppercase tracking-wide mb-3">Capa B — financiación bancaria</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                     <CampoNumero label="Principal financiado (crédito vehículo+GPS)" valor={parametros.principalCreditoBancario} onChange={setParam('principalCreditoBancario')} />
-                    <CampoNumero label="Principal financiación del seguro" valor={parametros.seguro.legacy.principalFinanciacion} onChange={setSeguroLegacy('principalFinanciacion')} />
-                    <CampoNumero
-                      label="Costo financiero del seguro (estimado)"
-                      descripcion="Supuesto lineal, no un cronograma bancario confirmado."
-                      valor={parametros.seguro.legacy.costoFinancieroEstimado}
-                      onChange={setSeguroLegacy('costoFinancieroEstimado')}
-                    />
-                    <CampoNumero
-                      label="Plazo de la financiación del seguro"
-                      suffix="meses"
-                      descripcion="Dato legacy no confirmado; independiente del plazo del crédito."
-                      valor={parametros.seguro.legacy.plazoMeses}
-                      onChange={setSeguroLegacy('plazoMeses')}
-                    />
                     <CampoNumero
                       label="Tasa efectiva anual del crédito"
                       suffix="% EA"
@@ -842,6 +839,28 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                   <p className="text-xs text-humania-gray/60 mt-4">
                     El plazo del crédito es una dimensión independiente de la duración del contrato con el conductor (D12) — no se asumen iguales.
                   </p>
+                  <div data-bloque="seguro-legacy" className="mt-6 rounded-md border border-amber-300 bg-amber-50/60 p-4">
+                    <h5 className="text-xs font-bold text-amber-900 uppercase tracking-wide">Modelo anterior del seguro (legacy, no confirmado)</h5>
+                    <p className="text-xs text-amber-900/80 mt-1 mb-4">
+                      Estos valores no representan la cotización actualmente cargada ni deben confundirse con la financiación del seguro de la cotización. Solo se conservan para reproducir el modelo anterior y los presupuestos históricos.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                      <CampoNumero label="Principal financiación del seguro" valor={parametros.seguro.legacy.principalFinanciacion} onChange={setSeguroLegacy('principalFinanciacion')} />
+                      <CampoNumero
+                        label="Costo financiero del seguro (estimado)"
+                        descripcion="Supuesto lineal, no un cronograma bancario confirmado."
+                        valor={parametros.seguro.legacy.costoFinancieroEstimado}
+                        onChange={setSeguroLegacy('costoFinancieroEstimado')}
+                      />
+                      <CampoNumero
+                        label="Plazo de la financiación del seguro"
+                        suffix="meses"
+                        descripcion="Dato legacy no confirmado; independiente del plazo del crédito."
+                        valor={parametros.seguro.legacy.plazoMeses}
+                        onChange={setSeguroLegacy('plazoMeses')}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 

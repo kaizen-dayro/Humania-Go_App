@@ -31,6 +31,23 @@ export interface FinanciacionSeguroRegistro {
   fecha_inicio: string | null
   fecha_primera_cuota: string | null
   estado_datos_campos: Record<string, unknown> | null
+  /**
+   * Póliza a la que pertenece la financiación (relación embebida de `polizas_seguro`, solo lectura).
+   * PostgREST la devuelve como objeto (muchos a uno); se acepta también un arreglo de un elemento.
+   */
+  poliza?: RegistroPolizaEmbebido | RegistroPolizaEmbebido[] | null
+}
+
+export interface RegistroPolizaEmbebido {
+  valor_poliza: number | string | null
+  estado_datos_campos: Record<string, unknown> | null
+}
+
+/** Datos de la póliza de la cotización que se muestran junto a la financiación. Informativos. */
+export interface PolizaCotizacion {
+  valorPoliza: number | null
+  /** Estado documental del valor de la póliza, tal como consta. */
+  estadoValorPoliza?: EstadoDato
 }
 
 /**
@@ -42,6 +59,8 @@ export interface CotizacionSeguro {
   entrada: EntradaCronogramaNominal
   /** Estado documental por dato, con el nombre del campo de `entrada`. */
   estadoDatos: Partial<Record<keyof EntradaCronogramaNominal, EstadoDato>>
+  /** Póliza de la cotización (valor y su estado). Ausente si el registro no la trajo. */
+  poliza?: PolizaCotizacion
 }
 
 const ESTADOS_VALIDOS: ReadonlySet<string> = new Set<EstadoDato>([
@@ -106,7 +125,14 @@ export function cotizacionDesdeRegistro(registro: FinanciacionSeguroRegistro): C
     // Solo se copian estados del vocabulario oficial; un valor desconocido no se interpreta.
     if (campo && typeof estado === 'string' && ESTADOS_VALIDOS.has(estado)) estadoDatos[campo] = estado as EstadoDato
   }
-  return { entrada, estadoDatos }
+  const cruda = Array.isArray(registro.poliza) ? registro.poliza[0] : registro.poliza
+  if (!cruda) return { entrada, estadoDatos }
+  const estadoPoliza = cruda.estado_datos_campos?.valor_poliza
+  const poliza: PolizaCotizacion = {
+    valorPoliza: aNumero(cruda.valor_poliza),
+    ...(typeof estadoPoliza === 'string' && ESTADOS_VALIDOS.has(estadoPoliza) ? { estadoValorPoliza: estadoPoliza as EstadoDato } : {}),
+  }
+  return { entrada, estadoDatos, poliza }
 }
 
 export interface ResultadoCronogramaSeguro {
@@ -132,6 +158,9 @@ export function calcularCronogramaSeguro(cotizacion: CotizacionSeguro): Resultad
  */
 export const COLUMNAS_FINANCIACION_COTIZACION =
   'id, valor_financiado, pago_inicial, gravamen_4x1000, numero_cuotas, periodicidad, dia_vencimiento, cuota_valor, cuota_es_aproximada, fecha_inicio, fecha_primera_cuota, estado_datos_campos'
+
+/** Relación embebida (PostgREST) con la póliza: valor de la póliza y su estado documental. */
+export const COLUMNAS_POLIZA_EMBEBIDA = 'poliza:polizas_seguro(valor_poliza, estado_datos_campos)'
 
 export type FinanciacionSeguroFila = FinanciacionSeguroRegistro & { id: string }
 

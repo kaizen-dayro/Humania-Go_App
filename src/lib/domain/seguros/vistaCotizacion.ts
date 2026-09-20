@@ -6,7 +6,7 @@
 // estado documental de ningún dato. Los textos son los aprobados por Humania Go y viven
 // aquí para que las pruebas los fijen literalmente.
 
-import type { CotizacionSeguro, EstadoLecturaCotizacion, ResultadoCronogramaSeguro } from './adaptador'
+import type { CotizacionSeguro, ResultadoCronogramaSeguro } from './adaptador'
 import type { EstadoDato } from './tipos'
 
 export const TEXTOS_VISTA_COTIZACION = {
@@ -14,6 +14,7 @@ export const TEXTOS_VISTA_COTIZACION = {
   subtitulo: 'Datos informativos de la cotización: no participan en ROI, payback, caja ni resultado neto.',
   nota: 'La diferencia nominal no es un interés ni una tasa: la tasa, el sistema de amortización y el saldo siguen pendientes de documento.',
   etiquetas: {
+    valorPoliza: 'Valor de la póliza',
     pagoInicial: 'Pago inicial',
     gravamen: '4×1000 del pago inicial',
     pagoInicialTotal: 'Pago inicial total',
@@ -79,16 +80,17 @@ function textoFechaPrimeraCuota(fecha: string | null | undefined): string {
 const PERIODICIDAD_A_TEXTO: Record<string, string> = { MENSUAL: 'Mensual' }
 
 /**
- * Construye la vista solo si la lectura de la cotización está CARGADA y hay un cronograma nominal
- * válido; en cualquier otro caso devuelve null (la tarjeta no se muestra). Un dato no informado
- * (null) no genera fila: no se inventa nada.
+ * Construye la vista de la financiación del seguro DE UN PRESUPUESTO: depende solo de la cotización
+ * que ese presupuesto tiene en sus parámetros (`seguro.cotizacion`) y de su cronograma nominal.
+ * No hay valores globales: otro presupuesto, con otra cotización, produce otra vista. Devuelve null
+ * si el presupuesto no tiene cotización o el cronograma nominal no es válido (el bloque no se
+ * muestra). Un dato no informado (null) no genera fila: no se inventa nada.
  */
 export function construirVistaCotizacionSeguro(
-  estadoLectura: EstadoLecturaCotizacion,
   cotizacion: CotizacionSeguro | null,
   seguroNominal: ResultadoCronogramaSeguro | null,
 ): VistaCotizacionSeguro | null {
-  if (estadoLectura !== 'CARGADA' || !cotizacion || !seguroNominal?.cronograma) return null
+  if (!cotizacion || !seguroNominal?.cronograma) return null
   const { entrada, estadoDatos } = cotizacion
   const cron = seguroNominal.cronograma
   const et = TEXTOS_VISTA_COTIZACION.etiquetas
@@ -103,6 +105,7 @@ export function construirVistaCotizacionSeguro(
     if (valor === null || valor === undefined) return
     filas.push({ etiqueta, tipo, valor, estado: textoEstado(estado) })
   }
+  agregar(et.valorPoliza, 'moneda', cotizacion.poliza?.valorPoliza, cotizacion.poliza?.estadoValorPoliza)
   agregar(et.pagoInicial, 'moneda', entrada.pagoInicial, estadoDatos.pagoInicial)
   agregar(et.gravamen, 'moneda', entrada.gravamen4x1000, estadoDatos.gravamen4x1000)
   // El pago inicial total es la suma que ya calcula el cronograma nominal; no es un dato informado, no lleva estado.
