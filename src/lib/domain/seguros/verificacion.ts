@@ -16,6 +16,7 @@ import {
   type FinanciacionSeguroRegistro,
 } from './adaptador'
 import { generarCronogramaNominal, type EntradaCronogramaNominal } from './cronogramaNominal'
+import { TEXTOS_VISTA_COTIZACION, construirVistaCotizacionSeguro, textoEstado } from './vistaCotizacion'
 
 let casos = 0
 function verificar(nombre: string, fn: () => void) {
@@ -236,6 +237,116 @@ verificar('lectura: una activa sin datos indispensables -> DATOS_INCOMPLETOS (no
 verificar('lectura: las columnas que se piden a la base de datos son exactamente las que usa el adaptador', () => {
   const pedidas = COLUMNAS_FINANCIACION_COTIZACION.split(',').map((c) => c.trim())
   assert.deepEqual(pedidas.filter((c) => c !== 'id').sort(), Object.keys(REGISTRO).sort())
+})
+
+// ===== Vista informativa de la cotización (spec.md 34) =====
+// Tarjeta de solo lectura: estos casos fijan los textos aprobados literalmente y comprueban que la
+// vista solo reordena datos existentes (nada nuevo, nada promovido).
+
+const REGISTRO_CARGADO: FinanciacionSeguroRegistro = {
+  ...REGISTRO,
+  estado_datos_campos: {
+    valor_financiado: 'CONFIRMADO_POR_COTIZACION',
+    pago_inicial: 'CONFIRMADO_POR_COTIZACION',
+    gravamen_4x1000: 'CONFIRMADO_POR_COTIZACION',
+    numero_cuotas: 'CONFIRMADO_POR_COTIZACION',
+    periodicidad: 'CONFIRMADO_POR_COTIZACION',
+    cuota_valor: 'CONFIRMADO_POR_COTIZACION',
+    cuota_es_aproximada: 'CONFIRMADO_POR_COTIZACION',
+    dia_vencimiento: 'REPORTADO_SIN_SOPORTE_DOCUMENTAL',
+  },
+}
+const COTIZACION_CARGADA = cotizacionDesdeRegistro(REGISTRO_CARGADO)!
+const NOMINAL_CARGADO = calcularCronogramaSeguro(COTIZACION_CARGADA)
+const VISTA = construirVistaCotizacionSeguro('CARGADA', COTIZACION_CARGADA, NOMINAL_CARGADO)!
+
+verificar('vista (cotización CARGADA): título, subtítulo, nota fija y etiquetas de filas y totales son EXACTAMENTE los aprobados, en orden', () => {
+  assert.ok(VISTA)
+  assert.equal(VISTA.titulo, 'Financiación del seguro (cotización)')
+  assert.equal(VISTA.subtitulo, 'Datos informativos de la cotización: no participan en ROI, payback, caja ni resultado neto.')
+  assert.equal(VISTA.nota, 'La diferencia nominal no es un interés ni una tasa: la tasa, el sistema de amortización y el saldo siguen pendientes de documento.')
+  assert.deepEqual(
+    VISTA.filas.map((f) => f.etiqueta),
+    ['Pago inicial', '4×1000 del pago inicial', 'Pago inicial total', 'Valor financiado', 'Número de cuotas', 'Valor de cada cuota (aproximado)', 'Periodicidad', 'Día de vencimiento'],
+  )
+  assert.deepEqual(
+    VISTA.totales.map((f) => f.etiqueta),
+    ['Total de las cuotas', 'Diferencia nominal sobre lo financiado', 'Total nominal (pago inicial + cuotas)'],
+  )
+})
+
+verificar('vista: valores nominales de la cotización (256.738; 5.819; 262.557; 1.454.848; 10; 155.839; Mensual; día 5)', () => {
+  const valor = (etiqueta: string) => VISTA.filas.find((f) => f.etiqueta === etiqueta)?.valor
+  assert.equal(valor('Pago inicial'), 256_738)
+  assert.equal(valor('4×1000 del pago inicial'), 5_819)
+  assert.equal(valor('Pago inicial total'), 262_557)
+  assert.equal(valor('Valor financiado'), 1_454_848)
+  assert.equal(valor('Número de cuotas'), 10)
+  assert.equal(valor('Valor de cada cuota (aproximado)'), 155_839)
+  assert.equal(valor('Periodicidad'), 'Mensual')
+  assert.equal(valor('Día de vencimiento'), 5)
+})
+
+verificar('vista: total de las cuotas 1.558.390, diferencia nominal 103.542 y total nominal 1.820.947 (los mismos números del cronograma nominal, sin cálculo nuevo)', () => {
+  const total = (etiqueta: string) => VISTA.totales.find((f) => f.etiqueta === etiqueta)?.valor
+  assert.equal(total('Total de las cuotas'), 1_558_390)
+  assert.equal(total('Diferencia nominal sobre lo financiado'), 103_542)
+  assert.equal(total('Total nominal (pago inicial + cuotas)'), 1_820_947)
+  assert.equal(total('Total de las cuotas'), NOMINAL_CARGADO.cronograma!.totalCuotasNominal)
+  assert.equal(total('Diferencia nominal sobre lo financiado'), NOMINAL_CARGADO.cronograma!.costoFinancieroNominalTotal)
+  assert.equal(total('Total nominal (pago inicial + cuotas)'), NOMINAL_CARGADO.cronograma!.totalNominal)
+  assert.ok(VISTA.totales.every((f) => f.estado === null), 'los totales no son un dato informado: no llevan estado')
+})
+
+verificar('vista: estados documentales tal como constan — "Confirmado por cotización" y el día 5 solo como "Reportado, sin soporte documental"', () => {
+  const estado = (etiqueta: string) => VISTA.filas.find((f) => f.etiqueta === etiqueta)?.estado
+  for (const e of ['Pago inicial', '4×1000 del pago inicial', 'Valor financiado', 'Número de cuotas', 'Valor de cada cuota (aproximado)', 'Periodicidad']) {
+    assert.equal(estado(e), 'Confirmado por cotización', e)
+  }
+  assert.equal(estado('Día de vencimiento'), 'Reportado, sin soporte documental')
+  assert.equal(estado('Pago inicial total'), null, 'la suma no es un dato informado')
+  const usados = new Set(VISTA.filas.map((f) => f.estado).filter(Boolean))
+  assert.deepEqual([...usados].sort(), ['Confirmado por cotización', 'Reportado, sin soporte documental'])
+})
+
+verificar('vista: ningún estado se promueve — CONFIRMADO_DOCUMENTALMENTE (u otro estado) no recibe texto y el día 5 nunca sale como confirmado', () => {
+  assert.equal(textoEstado('CONFIRMADO_DOCUMENTALMENTE'), null)
+  assert.equal(textoEstado('DERIVADO'), null)
+  assert.equal(textoEstado('LEGACY_NO_CONFIRMADO'), null)
+  assert.equal(textoEstado(undefined), null)
+  const promovida = { ...COTIZACION_CARGADA, estadoDatos: { ...COTIZACION_CARGADA.estadoDatos, diaVencimiento: 'CONFIRMADO_DOCUMENTALMENTE' as const } }
+  const v = construirVistaCotizacionSeguro('CARGADA', promovida, NOMINAL_CARGADO)!
+  assert.equal(v.filas.find((f) => f.etiqueta === 'Día de vencimiento')?.estado, null, 'sin texto: la vista no lo presenta como confirmado')
+  assert.ok(!JSON.stringify(v).includes('documentalmente'), 'la vista no menciona confirmación documental')
+})
+
+verificar('vista: con fecha_primera_cuota NULL muestra "Fecha de la primera cuota: Pendiente" (sin mes, año ni fecha inventados)', () => {
+  assert.equal(REGISTRO_CARGADO.fecha_primera_cuota, null)
+  assert.equal(VISTA.fechaPrimeraCuota, 'Fecha de la primera cuota: Pendiente')
+  assert.ok(!/\d{2}-\d{2}-\d{4}/.test(VISTA.fechaPrimeraCuota))
+  // Solo si algún día se informa la fecha (fixture de prueba, no un dato real) se muestra en DD-MM-AAAA.
+  const conFecha = cotizacionDesdeRegistro({ ...REGISTRO_CARGADO, fecha_primera_cuota: '2026-11-05' })!
+  const v = construirVistaCotizacionSeguro('CARGADA', conFecha, calcularCronogramaSeguro(conFecha))!
+  assert.equal(v.fechaPrimeraCuota, 'Fecha de la primera cuota: 05-11-2026')
+})
+
+verificar('vista (cotización no cargada): sin tarjeta en SIN_COTIZACION, VARIAS_ACTIVAS, DATOS_INCOMPLETOS y ERROR; ni con CARGADA sin datos o sin cronograma válido', () => {
+  for (const estado of ['SIN_COTIZACION', 'VARIAS_ACTIVAS', 'DATOS_INCOMPLETOS', 'ERROR'] as const) {
+    assert.equal(construirVistaCotizacionSeguro(estado, COTIZACION_CARGADA, NOMINAL_CARGADO), null, estado)
+  }
+  assert.equal(construirVistaCotizacionSeguro('CARGADA', null, NOMINAL_CARGADO), null, 'CARGADA sin cotización')
+  assert.equal(construirVistaCotizacionSeguro('CARGADA', COTIZACION_CARGADA, null), null, 'CARGADA sin cronograma')
+  assert.equal(construirVistaCotizacionSeguro('CARGADA', COTIZACION_CARGADA, { cronograma: null, error: 'dato inválido' }), null, 'cronograma inválido')
+})
+
+verificar('vista: un dato no informado no genera fila (no se inventa nada) y es estrictamente informativa: sin tasa, interés, amortización ni saldo en filas y totales', () => {
+  const sinGravamen = cotizacionDesdeRegistro({ ...REGISTRO_CARGADO, gravamen_4x1000: null })!
+  const v = construirVistaCotizacionSeguro('CARGADA', sinGravamen, calcularCronogramaSeguro(sinGravamen))!
+  assert.ok(!v.filas.some((f) => f.etiqueta === '4×1000 del pago inicial' || f.etiqueta === 'Pago inicial total'))
+  assert.ok(!v.totales.some((f) => f.etiqueta === 'Total nominal (pago inicial + cuotas)'), 'sin 4×1000 el total nominal no es determinable')
+  for (const f of [...VISTA.filas, ...VISTA.totales]) assert.ok(!/inter[eé]s|tasa|amortizaci|saldo|proyecci/i.test(f.etiqueta), f.etiqueta)
+  assert.ok(VISTA.subtitulo.includes('no participan en ROI, payback, caja ni resultado neto'), 'conserva la advertencia de que no participa en los indicadores')
+  assert.equal(TEXTOS_VISTA_COTIZACION.etiquetas.diferenciaNominal, 'Diferencia nominal sobre lo financiado', 'la diferencia nominal nunca se llama interés')
 })
 
 verificar('el módulo no contiene valores legacy ni tasas (escaneo del código fuente, spec.md 27.1 y 28.10)', () => {

@@ -37,6 +37,7 @@ import { Label } from '@/components/ui/label'
 import { calcularMetricas, type ResultadoMetricas } from '@/lib/domain/presupuesto/metricas'
 import { hayDatosNoConfirmadosEnCalculo } from '@/lib/domain/presupuesto/datosNoConfirmados'
 import type { CotizacionSeguro, EstadoLecturaCotizacion } from '@/lib/domain/seguros/adaptador'
+import { construirVistaCotizacionSeguro, type VistaCotizacionSeguro } from '@/lib/domain/seguros/vistaCotizacion'
 import { calcularVeredicto } from '@/lib/domain/presupuesto/veredicto'
 import {
   PARAMETROS_REFERENCIA,
@@ -78,6 +79,42 @@ function Fila({ label, valor, destacado = false }: { label: string; valor: strin
       <span className={`text-sm font-mono tabular-nums text-right ${destacado ? 'font-bold text-humania-blue text-base' : 'font-medium text-neutral-800'}`}>
         {valor}
       </span>
+    </div>
+  )
+}
+
+/**
+ * Tarjeta de SOLO LECTURA con los datos de la cotización del seguro (spec.md 34). Estrictamente
+ * informativa: no calcula nada, no toca ningún indicador y muestra el estado documental de cada
+ * dato tal como consta (nunca lo promueve). Los textos vienen aprobados desde `vistaCotizacion.ts`.
+ */
+function TarjetaCotizacionSeguro({ vista }: { vista: VistaCotizacionSeguro }) {
+  const formato = (f: VistaCotizacionSeguro['filas'][number]) => (f.tipo === 'moneda' ? cop(f.valor as number) : String(f.valor))
+  return (
+    <div data-tarjeta="cotizacion-seguro">
+      <Tarjeta titulo={vista.titulo}>
+        <p className="text-xs text-humania-gray/70 -mt-2 mb-4">{vista.subtitulo}</p>
+        <div>
+          {vista.filas.map((f) => (
+            <div key={f.etiqueta} className="flex items-baseline justify-between gap-4 py-2 border-b border-neutral-100 last:border-0">
+              <span className="text-sm text-humania-gray">{f.etiqueta}</span>
+              <span className="flex flex-wrap items-baseline justify-end gap-x-3 gap-y-0.5 text-right">
+                <span className="text-sm font-mono tabular-nums font-medium text-neutral-800">{formato(f)}</span>
+                {f.estado && (
+                  <span className="text-[11px] rounded-sm border border-neutral-300 bg-neutral-50 px-1.5 py-0.5 text-humania-gray/80">{f.estado}</span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 border-t border-neutral-200 pt-2">
+          {vista.totales.map((t) => (
+            <Fila key={t.etiqueta} label={t.etiqueta} valor={formato(t)} />
+          ))}
+        </div>
+        <p className="text-sm text-humania-gray mt-4">{vista.fechaPrimeraCuota}</p>
+        <p className="text-xs text-humania-gray/70 mt-3">{vista.nota}</p>
+      </Tarjeta>
     </div>
   )
 }
@@ -395,6 +432,11 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
     [parametros, semanasAplazatoriasUsadas, errores],
   )
   const veredicto = useMemo(() => (resultado ? calcularVeredicto(resultado) : null), [resultado])
+  // Tarjeta informativa de la cotización: solo con la lectura CARGADA (spec.md 34); no participa en ningún indicador.
+  const vistaCotizacion = useMemo(
+    () => (resultado ? construirVistaCotizacionSeguro(estadoCotizacionSeguro, parametros.seguro.cotizacion, resultado.seguroNominal) : null),
+    [resultado, estadoCotizacionSeguro, parametros.seguro.cotizacion],
+  )
 
   const setParam = <K extends ClaveNumericaParametros>(campo: K) => (valor: number) =>
     setParametros((prev) => ({ ...prev, [campo]: valor }))
@@ -520,6 +562,8 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
               </div>
             </div>
           </Tarjeta>
+
+          {vistaCotizacion && <TarjetaCotizacionSeguro vista={vistaCotizacion} />}
 
           <Tarjeta titulo="Análisis detallado — payback (real dentro del contrato vs. extrapolado)">
             <div className="overflow-x-auto">
