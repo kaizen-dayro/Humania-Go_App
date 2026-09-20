@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Salida compilada de `npm run verificar:*` (generada, ignorada por git).
+    ".verificacion-*/**",
   ]),
 ]);
 

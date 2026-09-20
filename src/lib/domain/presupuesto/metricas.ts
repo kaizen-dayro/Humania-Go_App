@@ -15,8 +15,10 @@ import {
   type Amortizacion,
   type AmortizacionConAbono,
 } from './amortizacion'
+import { calcularCronogramaSeguro, type ResultadoCronogramaSeguro } from '../seguros/adaptador'
+import { calcularDatosNoConfirmados, type DatoNoConfirmado } from './datosNoConfirmados'
 import { calcularFlujoDeCaja, type FlujoContractual } from './flujoDeCaja'
-import { inversionInicial, margenVentaActivo, recursosPropiosEfectivos, type ParametrosPresupuesto } from './parametros'
+import { inversionInicial, margenVentaActivo, recursosPropiosEfectivos, seguroEfectivo, type ParametrosPresupuesto } from './parametros'
 
 export interface CostosRecurrentesConcepto {
   ocurrenciasAdicionales: number
@@ -136,11 +138,29 @@ export interface ResultadoMetricas {
    * además para la tabla completa mes a mes en la interfaz.
    */
   amortizacionConAbono: AmortizacionConAbono | null
+
+  /**
+   * Marcado ADITIVO (spec.md 27.4, plan.md 12.5 M3): datos que el modelo
+   * usa y que NO tienen soporte documental, con las salidas que dependen de
+   * ellos. No altera ninguna cifra ni la semántica de las demás salidas.
+   * Mientras la lista no esté vacía, el resultado no es oficial y la
+   * interfaz debe mostrar `MODELO CON DATOS NO CONFIRMADOS`.
+   */
+  datosNoConfirmados: DatoNoConfirmado[]
+
+  /**
+   * Cronograma NOMINAL de la financiación vigente del seguro (dominio
+   * `seguros`, decisión 16), solo INFORMATIVO (spec.md 29.2): ningún
+   * indicador de este resultado lo usa. null = no hay cotización cargada.
+   */
+  seguroNominal: ResultadoCronogramaSeguro | null
 }
 
 export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUsadas = 0): ResultadoMetricas {
   const flujo = calcularFlujoDeCaja(p, semanasAplazatoriasUsadas)
   const inversion = inversionInicial(p)
+  // El seguro tiene su propio plazo: nunca se toma del crédito del vehículo (spec.md 29).
+  const seguro = seguroEfectivo(p)
   const semanasPorMes = p.semanasPorAno / p.mesesPorAno
   const esRecursosPropios = p.modalidadAdquisicion === 'RECURSOS_PROPIOS'
 
@@ -149,7 +169,7 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
   // intereses ni cuota bancaria — todo pagado de contado (Capa B no
   // aplica en absoluto). `amortizarCredito`/`estimarCostoSeguroLineal`
   // solo se invocan en modalidad CREDITO.
-  const amortizacionCredito = esRecursosPropios ? null : amortizarCredito(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesContrato)
+  const amortizacionCredito = esRecursosPropios ? null : amortizarCredito(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesCreditoVehiculo)
   // Abono extraordinario a capital (D15 CERRADA, spec.md Sección 11/21)
   // — solo aplica en modalidad CREDITO con porcentajeAbonoCapital > 0.
   // Cuando existe, SUSTITUYE a `amortizacionCredito` para todos los
@@ -159,11 +179,13 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
   // (normal) sigue calculándose siempre, para la tabla comparativa.
   const amortizacionConAbono =
     !esRecursosPropios && p.porcentajeAbonoCapital > 0
-      ? amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesContrato, p.porcentajeAbonoCapital, p.mesInicioAbonoCapital)
+      ? amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesCreditoVehiculo, p.porcentajeAbonoCapital, p.mesInicioAbonoCapital)
       : null
-  const { costoFinancieroMensual: seguroCostoMensual, cuotaMensual: seguroCuotaMensual } = esRecursosPropios
-    ? { costoFinancieroMensual: 0, cuotaMensual: 0 }
-    : estimarCostoSeguroLineal(p.principalFinanciacionSeguro, p.costoFinancieroSeguroEstimado, p.mesesContrato)
+  // Sin seguro modelado (SIN_MODELAR) no hay costo ni cuota; el plazo 0 de ese modo nunca se usa como divisor.
+  const { costoFinancieroMensual: seguroCostoMensual, cuotaMensual: seguroCuotaMensual } =
+    esRecursosPropios || p.seguro.modo === 'SIN_MODELAR'
+      ? { costoFinancieroMensual: 0, cuotaMensual: 0 }
+      : estimarCostoSeguroLineal(seguro.principal, seguro.costoFinancieroTotal, seguro.plazoMeses)
 
   const mesAlFinDelContrato = flujo.duracionContratoSemanas / semanasPorMes
 
@@ -187,7 +209,7 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
       const mesExacto = semana / semanasPorMes
       const mesEntero = Math.floor(mesExacto)
       const costoCredito = costoCreditoAlMes(view, mesExacto)
-      const mesesSeguro = amortizacionCredito ? Math.min(mesEntero, p.mesesContrato) : 0
+      const mesesSeguro = amortizacionCredito ? Math.min(mesEntero, seguro.plazoMeses) : 0
       const costoSeguro = view === 'rentabilidad' ? seguroCostoMensual * mesesSeguro : seguroCuotaMensual * mesesSeguro
       const recurrentes = calcularCostosRecurrentes(p, mesEntero).total + calcularOtrosCostosHumania(p, mesEntero)
       serie.push(costoCredito + costoSeguro + recurrentes)
@@ -215,7 +237,8 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
   const mesEnteroAlFinDelContrato = Math.floor(mesAlFinDelContrato)
   const costosRecurrentes = calcularCostosRecurrentes(p, mesEnteroAlFinDelContrato)
   const otrosCostosAlFinDelContrato = calcularOtrosCostosHumania(p, mesEnteroAlFinDelContrato)
-  const mesesSeguroAlFinal = amortizacionCredito ? mesEnteroAlFinDelContrato : 0
+  // Mismo tope que la serie semanal: el seguro no genera cuotas más allá de su propio plazo.
+  const mesesSeguroAlFinal = amortizacionCredito ? Math.min(mesEnteroAlFinDelContrato, seguro.plazoMeses) : 0
   const costosFinancierosRentabilidad = costoCreditoAlMes('rentabilidad', mesAlFinDelContrato) + seguroCostoMensual * mesesSeguroAlFinal
   const costosFinancierosCaja = costoCreditoAlMes('caja', mesAlFinDelContrato) + seguroCuotaMensual * mesesSeguroAlFinal
 
@@ -232,7 +255,7 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
     recursosPropios,
     // "Financiado" — 0 en RECURSOS_PROPIOS (nada se financia, todo de contado).
     financiacionBancaria: esRecursosPropios ? 0 : p.principalCreditoBancario,
-    principalFinanciacionSeguro: esRecursosPropios ? 0 : p.principalFinanciacionSeguro,
+    principalFinanciacionSeguro: esRecursosPropios ? 0 : seguro.principal,
     costosFinancierosRentabilidad,
     costosFinancierosCaja,
     costosRecurrentes,
@@ -251,5 +274,7 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
     margenVentaActivo: margenVentaActivo(p),
     amortizacionNormal: amortizacionCredito,
     amortizacionConAbono,
+    datosNoConfirmados: calcularDatosNoConfirmados(p),
+    seguroNominal: p.seguro.cotizacion ? calcularCronogramaSeguro(p.seguro.cotizacion) : null,
   }
 }

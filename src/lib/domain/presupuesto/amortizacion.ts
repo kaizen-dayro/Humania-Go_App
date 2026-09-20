@@ -141,7 +141,7 @@ export function pagoTotalAcumuladoConAbono(amortizacion: AmortizacionConAbono, m
 
 /**
  * Financiación del seguro externo (D1, spec.md 19.13.1/19.14.2): el
- * costo financiero total confirmado ($2.500.000) y el cronograma exacto
+ * costo financiero total estimado LEGACY (no confirmado, spec.md 25 y 29) y el cronograma exacto
  * de la financiación no están documentados — se distribuye de forma
  * lineal simple sobre el plazo dado. Esto es un SUPUESTO explícito (no
  * un dato bancario confirmado), señalado también en spec.md 19.19.4 —

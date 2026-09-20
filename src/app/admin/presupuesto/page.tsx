@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { CalculadoraPresupuesto } from './CalculadoraPresupuesto'
+import { leerCotizacionSeguroVigente } from './cotizacionSeguro'
 
 export default async function PresupuestoPage() {
   const supabase = await createClient()
@@ -22,6 +23,10 @@ export default async function PresupuestoPage() {
     redirect('/admin')
   }
 
+  // Datos de la financiación vigente del seguro (RLS: solo SUPER_ADMIN, ya verificado arriba). Son
+  // INFORMATIVOS: no participan en ningún indicador financiero (spec.md 31).
+  const lecturaCotizacion = await leerCotizacionSeguroVigente(supabase)
+
   return (
     <div className="max-w-6xl mx-auto">
       <div className="mb-8">
@@ -29,7 +34,11 @@ export default async function PresupuestoPage() {
         <p className="text-humania-gray">Modelo financiero del ciclo vehículo-conductor — exclusivo SUPER_ADMIN</p>
       </div>
 
-      <CalculadoraPresupuesto />
+      <CalculadoraPresupuesto
+        key={lecturaCotizacion.financiacionId ?? lecturaCotizacion.estado}
+        cotizacionSeguro={lecturaCotizacion.cotizacion}
+        estadoCotizacionSeguro={lecturaCotizacion.estado}
+      />
     </div>
   )
 }

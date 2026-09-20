@@ -35,14 +35,18 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { calcularMetricas, type ResultadoMetricas } from '@/lib/domain/presupuesto/metricas'
+import { hayDatosNoConfirmadosEnCalculo } from '@/lib/domain/presupuesto/datosNoConfirmados'
+import type { CotizacionSeguro, EstadoLecturaCotizacion } from '@/lib/domain/seguros/adaptador'
 import { calcularVeredicto } from '@/lib/domain/presupuesto/veredicto'
 import {
   PARAMETROS_REFERENCIA,
   PORCENTAJE_ABONO_CAPITAL_MAXIMO,
+  conSeguroLegacy,
   equityConductorSemanal,
   validarParametros,
   type ModalidadAdquisicion,
   type ParametrosPresupuesto,
+  type SeguroLegacyParametros,
 } from '@/lib/domain/presupuesto/parametros'
 import { formatearFechaAdmin } from '@/lib/format'
 import { guardarPresupuesto, listarPresupuestos } from './actions'
@@ -167,7 +171,7 @@ function ResumenEjecutivo({ resultado }: { resultado: ResultadoMetricas }) {
 function EstadoOperacion({ resultado, parametros }: { resultado: ResultadoMetricas; parametros: ParametrosPresupuesto }) {
   const semanasPorMes = parametros.semanasPorAno / parametros.mesesPorAno
   const mesAlFinDelContrato = resultado.flujo.duracionContratoSemanas / semanasPorMes
-  const creditoSobrevive = parametros.modalidadAdquisicion === 'CREDITO' && mesAlFinDelContrato < parametros.mesesContrato
+  const creditoSobrevive = parametros.modalidadAdquisicion === 'CREDITO' && mesAlFinDelContrato < parametros.mesesCreditoVehiculo
 
   // D3 refinada (2026-09-01, spec.md Sección 23): el estado general
   // (verde/ámbar) se decide con el payback de flujo contractual
@@ -189,7 +193,7 @@ function EstadoOperacion({ resultado, parametros }: { resultado: ResultadoMetric
   }
   if (creditoSobrevive) {
     detalles.push(
-      `El crédito bancario (plazo ${parametros.mesesContrato} meses) continúa pagándose después de finalizar el contrato con el conductor (contrato ≈ ${mesAlFinDelContrato.toFixed(1)} meses).`,
+      `El crédito bancario (plazo ${parametros.mesesCreditoVehiculo} meses) continúa pagándose después de finalizar el contrato con el conductor (contrato ≈ ${mesAlFinDelContrato.toFixed(1)} meses).`,
     )
   }
   if (resultado.resultadoNeto < 0) {
@@ -351,8 +355,20 @@ interface PresupuestoGuardado {
   created_at: string
 }
 
-export function CalculadoraPresupuesto() {
-  const [parametros, setParametros] = useState<ParametrosPresupuesto>(PARAMETROS_REFERENCIA)
+/** Claves de `ParametrosPresupuesto` cuyo valor es un número (las editables con un campo numérico). */
+type ClaveNumericaParametros = { [K in keyof ParametrosPresupuesto]: ParametrosPresupuesto[K] extends number ? K : never }[keyof ParametrosPresupuesto]
+
+interface CalculadoraPresupuestoProps {
+  /** Datos de la financiación vigente del seguro leídos en el servidor. Informativos: no entran a ningún indicador. */
+  cotizacionSeguro?: CotizacionSeguro | null
+  estadoCotizacionSeguro?: EstadoLecturaCotizacion
+}
+
+export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizacionSeguro = 'SIN_COTIZACION' }: CalculadoraPresupuestoProps) {
+  const [parametros, setParametros] = useState<ParametrosPresupuesto>(() => ({
+    ...PARAMETROS_REFERENCIA,
+    seguro: { ...PARAMETROS_REFERENCIA.seguro, cotizacion: cotizacionSeguro },
+  }))
   const [semanasAplazatoriasUsadas, setSemanasAplazatoriasUsadas] = useState(0)
   const [etiqueta, setEtiqueta] = useState('')
   const [guardando, setGuardando] = useState(false)
@@ -368,8 +384,12 @@ export function CalculadoraPresupuesto() {
   )
   const veredicto = useMemo(() => (resultado ? calcularVeredicto(resultado) : null), [resultado])
 
-  const setParam = <K extends keyof ParametrosPresupuesto>(campo: K) => (valor: number) =>
+  const setParam = <K extends ClaveNumericaParametros>(campo: K) => (valor: number) =>
     setParametros((prev) => ({ ...prev, [campo]: valor }))
+
+  // Datos del modelo LEGACY del seguro (anidados en `seguro.legacy`, separados del crédito del vehículo).
+  const setSeguroLegacy = (campo: keyof SeguroLegacyParametros) => (valor: number) =>
+    setParametros((prev) => conSeguroLegacy(prev, { [campo]: valor }))
 
   const setModalidad = (modalidad: ModalidadAdquisicion) => setParametros((prev) => ({ ...prev, modalidadAdquisicion: modalidad }))
 
@@ -418,7 +438,7 @@ export function CalculadoraPresupuesto() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-10" data-cotizacion-seguro={estadoCotizacionSeguro} data-cotizacion-seguro-datos={cotizacionSeguro ? Object.keys(cotizacionSeguro.estadoDatos).length : 0}>
       {errores.length > 0 && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-800 text-sm font-medium flex items-start gap-3 rounded-md">
           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -435,6 +455,14 @@ export function CalculadoraPresupuesto() {
 
       {resultado && (
         <>
+          {/* Advertencia persistente (M6, spec.md 27.4): texto literal aprobado por Humania Go.
+              Se muestra mientras el modelo use datos sin soporte documental. */}
+          {hayDatosNoConfirmadosEnCalculo(resultado.datosNoConfirmados) && (
+            <div role="status" className="p-4 bg-amber-50 border border-amber-300 text-amber-900 text-sm font-bold flex items-center gap-3 rounded-md">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <p className="tracking-wide">MODELO CON DATOS NO CONFIRMADOS</p>
+            </div>
+          )}
           <ResumenEjecutivo resultado={resultado} />
           <EstadoOperacion resultado={resultado} parametros={parametros} />
 
@@ -586,7 +614,7 @@ export function CalculadoraPresupuesto() {
                         <tbody>
                           <tr className="border-b border-neutral-100">
                             <td className="py-2.5 text-humania-gray">Plazo</td>
-                            <td className="py-2.5 font-mono tabular-nums">{parametros.mesesContrato} meses</td>
+                            <td className="py-2.5 font-mono tabular-nums">{parametros.mesesCreditoVehiculo} meses</td>
                             <td className="py-2.5 font-mono tabular-nums font-semibold">{resultado.amortizacionConAbono.mesesReales} meses</td>
                             <td className="py-2.5 font-mono tabular-nums text-emerald-700">−{resultado.amortizacionConAbono.mesesAhorrados} meses</td>
                           </tr>
@@ -733,12 +761,19 @@ export function CalculadoraPresupuesto() {
                   <h4 className="text-xs font-bold text-humania-gray/50 uppercase tracking-wide mb-3">Capa B — financiación bancaria</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                     <CampoNumero label="Principal financiado (crédito vehículo+GPS)" valor={parametros.principalCreditoBancario} onChange={setParam('principalCreditoBancario')} />
-                    <CampoNumero label="Principal financiación del seguro" valor={parametros.principalFinanciacionSeguro} onChange={setParam('principalFinanciacionSeguro')} />
+                    <CampoNumero label="Principal financiación del seguro" valor={parametros.seguro.legacy.principalFinanciacion} onChange={setSeguroLegacy('principalFinanciacion')} />
                     <CampoNumero
                       label="Costo financiero del seguro (estimado)"
                       descripcion="Supuesto lineal, no un cronograma bancario confirmado."
-                      valor={parametros.costoFinancieroSeguroEstimado}
-                      onChange={setParam('costoFinancieroSeguroEstimado')}
+                      valor={parametros.seguro.legacy.costoFinancieroEstimado}
+                      onChange={setSeguroLegacy('costoFinancieroEstimado')}
+                    />
+                    <CampoNumero
+                      label="Plazo de la financiación del seguro"
+                      suffix="meses"
+                      descripcion="Dato legacy no confirmado; independiente del plazo del crédito."
+                      valor={parametros.seguro.legacy.plazoMeses}
+                      onChange={setSeguroLegacy('plazoMeses')}
                     />
                     <CampoNumero
                       label="Tasa efectiva anual del crédito"
@@ -746,7 +781,7 @@ export function CalculadoraPresupuesto() {
                       valor={Math.round(parametros.tasaEfectivaAnualCredito * 1000) / 10}
                       onChange={(v) => setParam('tasaEfectivaAnualCredito')(v / 100)}
                     />
-                    <CampoNumero label="Plazo del crédito bancario" suffix="meses" valor={parametros.mesesContrato} onChange={setParam('mesesContrato')} />
+                    <CampoNumero label="Plazo del crédito bancario" suffix="meses" valor={parametros.mesesCreditoVehiculo} onChange={setParam('mesesCreditoVehiculo')} />
                   </div>
                   <p className="text-xs text-humania-gray/60 mt-4">
                     El plazo del crédito es una dimensión independiente de la duración del contrato con el conductor (D12) — no se asumen iguales.
