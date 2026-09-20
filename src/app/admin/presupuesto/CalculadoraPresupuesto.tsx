@@ -82,9 +82,20 @@ function Fila({ label, valor, destacado = false }: { label: string; valor: strin
   )
 }
 
-function Colapsable({ titulo, subtitulo, children }: { titulo: string; subtitulo?: string; children: React.ReactNode }) {
+function Colapsable({
+  titulo,
+  subtitulo,
+  abiertoInicial = false,
+  children,
+}: {
+  titulo: string
+  subtitulo?: string
+  /** Abierto al montar; después el usuario lo abre o cierra libremente (el estado lo lleva el navegador). */
+  abiertoInicial?: boolean
+  children: React.ReactNode
+}) {
   return (
-    <details className="bg-white border border-neutral-200 rounded-lg shadow-sm group">
+    <details className="bg-white border border-neutral-200 rounded-lg shadow-sm group" open={abiertoInicial}>
       <summary className="flex items-center justify-between gap-4 px-6 py-4 cursor-pointer list-none select-none">
         <div>
           <h3 className="text-sm font-bold text-humania-blue uppercase tracking-wide">{titulo}</h3>
@@ -585,7 +596,7 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <CampoNumero
                     label="Porcentaje de abono a capital"
-                    descripcion="% de la cuota mensual original, 100% a capital, reducción de plazo. 0% = sin abono."
+                    descripcion={`Máximo ${PORCENTAJE_ABONO_CAPITAL_MAXIMO * 100}% de la cuota mensual original, 100% a capital, reducción de plazo. 0% = sin abono.`}
                     suffix="%"
                     valor={Math.round(parametros.porcentajeAbonoCapital * 1000) / 10}
                     onChange={(v) => setParam('porcentajeAbonoCapital')(Math.min(PORCENTAJE_ABONO_CAPITAL_MAXIMO, Math.max(0, v) / 100))}
@@ -860,7 +871,11 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
             </div>
           </Tarjeta>
 
-          <Tarjeta titulo="Presupuestos guardados">
+          <Colapsable
+            titulo="Presupuestos guardados"
+            subtitulo={guardados && guardados.length > 0 ? `${guardados.length} guardado${guardados.length === 1 ? '' : 's'}` : undefined}
+            abiertoInicial
+          >
             {(cargandoInicial || cargandoGuardados) && <p className="text-sm text-humania-gray">Cargando...</p>}
             {!(cargandoInicial || cargandoGuardados) && guardados && guardados.length === 0 && <p className="text-sm text-humania-gray">Todavía no hay presupuestos guardados.</p>}
             {!(cargandoInicial || cargandoGuardados) && guardados && guardados.length > 0 && (
@@ -889,7 +904,7 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                 </table>
               </div>
             )}
-          </Tarjeta>
+          </Colapsable>
         </>
       )}
     </div>
