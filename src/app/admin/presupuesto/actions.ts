@@ -9,7 +9,10 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { calcularMetricas } from '@/lib/domain/presupuesto/metricas'
+import type { ResultadoGuardado } from '@/lib/domain/presupuesto/compararHistorico'
+import { clavesDesconocidas } from '@/lib/domain/presupuesto/esquemaSnapshot'
 import { validarParametros, type ParametrosPresupuesto } from '@/lib/domain/presupuesto/parametros'
+import { reconocerSnapshot, type ResultadoReconocimientoSnapshot } from '@/lib/domain/presupuesto/reconocerSnapshot'
 import { FINANCIAL_MODEL_VERSION } from '@/lib/domain/presupuesto/version'
 import { leerCotizacionSeguroVigente } from './cotizacionSeguro'
 
@@ -29,6 +32,16 @@ export async function guardarPresupuesto(parametrosCliente: ParametrosPresupuest
   const { supabase, session, autorizado } = await requireSuperAdmin()
   if (!session) return { success: false, error: 'No autorizado.' }
   if (!autorizado) return { success: false, error: 'No autorizado: solo un SUPER_ADMIN puede guardar presupuestos.' }
+
+  // KAI-29 B2 (plan.md 18.6/18.2, spec.md 38.7): a diferencia de `reconocerSnapshot` (que
+  // al CARGAR tolera una clave de más porque puede ser dato histórico legítimo), un objeto
+  // recién construido por la propia interfaz nunca debería traer una clave que
+  // `ParametrosPresupuesto` no conoce — si la trae, es un request manipulado o un bug, y se
+  // rechaza, nunca se guarda ni parcial ni silenciosamente filtrado.
+  const clavesInesperadas = clavesDesconocidas(parametrosCliente as unknown as Record<string, unknown>)
+  if (clavesInesperadas.length > 0) {
+    return { success: false, error: `parametros contiene clave(s) no permitida(s): ${clavesInesperadas.join(', ')}` }
+  }
 
   // La cotización del seguro es INFORMATIVA (no entra a ningún indicador) y la base de datos es la
   // autoridad: se descarta la que traiga el cliente y se relee aquí (regla 1 de CLAUDE.md).
@@ -131,4 +144,78 @@ export async function listarPresupuestos() {
   }
 
   return { success: true, presupuestos: data || [] }
+}
+
+const REGEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * KAI-29 B2 (plan.md 18.2, spec.md 38.7) — lectura por `id` de un presupuesto guardado
+ * para "abrir" (B3, sin implementar todavía). Reutiliza `reconocerSnapshot` (B1) para
+ * decidir si el snapshot puede reconstruirse de forma determinista: esta función NO
+ * reimplementa reconocimiento, normalización ni validación de `parametros`.
+ *
+ * `resultadosHistoricos` es exclusivamente el resultado guardado al momento de guardar
+ * (decisión 2, spec.md 38.2): se devuelve solo para comparar contra lo que el motor actual
+ * recalcule (compararHistorico.ts, B1) — nunca entra a `reconocerSnapshot` ni participa en
+ * la reconstrucción de `parametros`.
+ *
+ * Solo lectura: sin UPDATE ni DELETE, sin fila nueva, sin tocar el estado actual de nadie
+ * — si algo falla, la función simplemente informa el motivo real.
+ */
+export type ResultadoObtenerPresupuesto =
+  | { estado: 'NO_AUTORIZADO' }
+  | { estado: 'ID_INVALIDO' }
+  | { estado: 'NO_ENCONTRADO' }
+  | { estado: 'ERROR'; mensaje: string }
+  | Exclude<ResultadoReconocimientoSnapshot, { estado: 'DETERMINISTA' }>
+  | {
+      estado: 'OK'
+      id: string
+      etiqueta: string | null
+      financialModelVersion: string
+      semanasAplazatoriasUsadas: number
+      parametros: ParametrosPresupuesto
+      resultadosHistoricos: ResultadoGuardado
+      versionConocida: boolean
+      clavesIgnoradas: readonly string[]
+      createdAt: string
+    }
+
+export async function obtenerPresupuesto(id: string): Promise<ResultadoObtenerPresupuesto> {
+  const { supabase, session, autorizado } = await requireSuperAdmin()
+  if (!session || !autorizado) return { estado: 'NO_AUTORIZADO' }
+
+  if (typeof id !== 'string' || !REGEX_UUID.test(id)) return { estado: 'ID_INVALIDO' }
+
+  const { data, error } = await supabase
+    .from('presupuestos_financieros')
+    .select('id, financial_model_version, etiqueta, parametros, semanas_aplazatorias_usadas, resultados, created_at')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error leyendo presupuesto financiero:', error)
+    return { estado: 'ERROR', mensaje: error.message }
+  }
+  if (!data) return { estado: 'NO_ENCONTRADO' }
+
+  const reconocido = reconocerSnapshot(data.parametros, data.financial_model_version)
+  if (reconocido.estado !== 'DETERMINISTA') return reconocido
+
+  if (!Number.isInteger(data.semanas_aplazatorias_usadas) || data.semanas_aplazatorias_usadas < 0) {
+    return { estado: 'DATOS_INVALIDOS', errores: ['semanas_aplazatorias_usadas debe ser un entero mayor o igual a 0'] }
+  }
+
+  return {
+    estado: 'OK',
+    id: data.id,
+    etiqueta: data.etiqueta,
+    financialModelVersion: data.financial_model_version,
+    semanasAplazatoriasUsadas: data.semanas_aplazatorias_usadas,
+    parametros: reconocido.parametros,
+    resultadosHistoricos: data.resultados as ResultadoGuardado,
+    versionConocida: reconocido.versionConocida,
+    clavesIgnoradas: reconocido.clavesIgnoradas,
+    createdAt: data.created_at,
+  }
 }
