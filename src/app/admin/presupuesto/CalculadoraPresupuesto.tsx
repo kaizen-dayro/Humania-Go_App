@@ -31,11 +31,14 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { calcularMetricas, type ResultadoMetricas } from '@/lib/domain/presupuesto/metricas'
 import { hayDatosNoConfirmadosEnCalculo } from '@/lib/domain/presupuesto/datosNoConfirmados'
+import { compararResultados, type ResultadoGuardado } from '@/lib/domain/presupuesto/compararHistorico'
 import type { CotizacionSeguro, EstadoLecturaCotizacion } from '@/lib/domain/seguros/adaptador'
 import { construirVistaCotizacionSeguro, type VistaCotizacionSeguro } from '@/lib/domain/seguros/vistaCotizacion'
 import { calcularVeredicto } from '@/lib/domain/presupuesto/veredicto'
@@ -50,7 +53,7 @@ import {
   type SeguroLegacyParametros,
 } from '@/lib/domain/presupuesto/parametros'
 import { formatearFechaAdmin } from '@/lib/format'
-import { guardarPresupuesto, listarPresupuestos } from './actions'
+import { guardarPresupuesto, listarPresupuestos, obtenerPresupuesto, type ResultadoObtenerPresupuesto } from './actions'
 
 const cop = (v: number) => `$${Math.round(v).toLocaleString('es-CO')}`
 const copCompacto = (v: number) => {
@@ -406,6 +409,36 @@ interface PresupuestoGuardado {
   created_at: string
 }
 
+/**
+ * KAI-29 B3 — de qué simulación viene el estado actual (plan.md 18.1). NUEVA: parámetros
+ * de referencia + cotización global. CARGADA: snapshot reconstruido por B1 vía
+ * `obtenerPresupuesto` (B2) — `resultadosHistoricos` es exclusivamente para comparar
+ * (`compararHistorico.ts`), nunca se usa para reconstruir `parametros`.
+ */
+type ContextoPresupuesto =
+  | { tipo: 'NUEVA' }
+  | { tipo: 'CARGADA'; id: string; etiqueta: string | null; createdAt: string; resultadosHistoricos: ResultadoGuardado }
+
+/** Mensaje de error al abrir un presupuesto — nunca oculta la razón real detrás de un texto genérico. */
+function mensajeErrorApertura(r: Exclude<ResultadoObtenerPresupuesto, { estado: 'OK' }>): string {
+  switch (r.estado) {
+    case 'NO_ENCONTRADO':
+      return 'No se encontró ese presupuesto guardado.'
+    case 'ID_INVALIDO':
+      return 'El identificador del presupuesto no es válido.'
+    case 'NO_AUTORIZADO':
+      return 'No autorizado: solo un SUPER_ADMIN puede abrir presupuestos guardados.'
+    case 'ESTRUCTURA_NO_RECONOCIDA':
+      return 'El presupuesto guardado tiene una forma que el sistema no reconoce.'
+    case 'DATOS_INVALIDOS':
+      return `El presupuesto guardado tiene datos inválidos: ${r.errores.join('; ')}`
+    case 'NO_DETERMINISTA':
+      return `El presupuesto guardado no se puede reconstruir de forma confiable: ${r.razon}`
+    case 'ERROR':
+      return r.mensaje
+  }
+}
+
 /** Claves de `ParametrosPresupuesto` cuyo valor es un número (las editables con un campo numérico). */
 type ClaveNumericaParametros = { [K in keyof ParametrosPresupuesto]: ParametrosPresupuesto[K] extends number ? K : never }[keyof ParametrosPresupuesto]
 
@@ -416,10 +449,18 @@ interface CalculadoraPresupuestoProps {
 }
 
 export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizacionSeguro = 'SIN_COTIZACION' }: CalculadoraPresupuestoProps) {
-  const [parametros, setParametros] = useState<ParametrosPresupuesto>(() => ({
-    ...PARAMETROS_REFERENCIA,
-    seguro: { ...PARAMETROS_REFERENCIA.seguro, cotizacion: cotizacionSeguro },
-  }))
+  // Estado de referencia: parámetros de referencia + cotización global — el mismo valor de
+  // partida que ya usaba el `useState` inicial, extraído para poder reconstruirlo también al
+  // cerrar un presupuesto cargado (KAI-29 B3).
+  const estadoInicial = useCallback(
+    (): { parametros: ParametrosPresupuesto; semanas: number } => ({
+      parametros: { ...PARAMETROS_REFERENCIA, seguro: { ...PARAMETROS_REFERENCIA.seguro, cotizacion: cotizacionSeguro } },
+      semanas: 0,
+    }),
+    [cotizacionSeguro],
+  )
+
+  const [parametros, setParametros] = useState<ParametrosPresupuesto>(() => estadoInicial().parametros)
   const [semanasAplazatoriasUsadas, setSemanasAplazatoriasUsadas] = useState(0)
   const [etiqueta, setEtiqueta] = useState('')
   const [guardando, setGuardando] = useState(false)
@@ -427,6 +468,14 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
   const [guardados, setGuardados] = useState<PresupuestoGuardado[] | null>(null)
   const [cargandoGuardados, setCargandoGuardados] = useState(false)
   const [cargandoInicial, setCargandoInicial] = useState(true)
+
+  // KAI-29 B3 — contexto de la simulación actual (NUEVA/CARGADA) y detección de cambios sin
+  // guardar. `baseline` es "lo último guardado o cargado": el estado de referencia al montar,
+  // y el snapshot reconstruido cada vez que se abre un presupuesto (plan.md 18.1).
+  const [contexto, setContexto] = useState<ContextoPresupuesto>({ tipo: 'NUEVA' })
+  const [baseline, setBaseline] = useState<{ parametros: ParametrosPresupuesto; semanas: number }>(estadoInicial)
+  const [cargandoApertura, setCargandoApertura] = useState<string | null>(null)
+  const [confirmandoAperturaId, setConfirmandoAperturaId] = useState<string | null>(null)
 
   const errores = useMemo(() => validarParametros(parametros), [parametros])
   const resultado = useMemo(
@@ -440,6 +489,66 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
     () => (resultado ? construirVistaCotizacionSeguro(parametros.seguro.cotizacion, resultado.seguroNominal) : null),
     [resultado, parametros.seguro.cotizacion],
   )
+
+  // KAI-29 B3 — ¿la simulación actual difiere de lo último guardado/cargado? Comparación
+  // estructural simple (los parámetros son JSON puro); mientras haya cambios, no se muestra
+  // la comparación histórico/actual (evita una lectura falsa) y abrir/cerrar otro presupuesto
+  // pide confirmación.
+  const hayCambiosSinGuardar = useMemo(
+    () => semanasAplazatoriasUsadas !== baseline.semanas || JSON.stringify(parametros) !== JSON.stringify(baseline.parametros),
+    [parametros, semanasAplazatoriasUsadas, baseline],
+  )
+
+  // Histórico (guardado al momento de guardar) vs. actual (motor recalculado desde
+  // `parametros`) — spec.md 38.5. `resultadosHistoricos` NUNCA participa en `resultado`
+  // (viene de `calcularMetricas`, no de aquí); esta comparación es solo de presentación.
+  const comparacion = useMemo(() => {
+    if (contexto.tipo !== 'CARGADA' || !resultado || hayCambiosSinGuardar) return null
+    return compararResultados(contexto.resultadosHistoricos, resultado)
+  }, [contexto, resultado, hayCambiosSinGuardar])
+
+  async function abrirPresupuesto(id: string) {
+    setCargandoApertura(id)
+    setMensaje(null)
+    const r = await obtenerPresupuesto(id)
+    setCargandoApertura(null)
+    if (r.estado !== 'OK') {
+      // El estado actual no se toca en absoluto ante cualquier fallo (decisión 6, spec.md 38.2).
+      setMensaje({ tipo: 'error', texto: mensajeErrorApertura(r) })
+      return
+    }
+    // Reemplazo atómico completo — nunca `prev => ({...prev, ...})` (evita residuos A -> B -> A).
+    setParametros(r.parametros)
+    setSemanasAplazatoriasUsadas(r.semanasAplazatoriasUsadas)
+    setBaseline({ parametros: r.parametros, semanas: r.semanasAplazatoriasUsadas })
+    setEtiqueta('')
+    setContexto({ tipo: 'CARGADA', id: r.id, etiqueta: r.etiqueta, createdAt: r.createdAt, resultadosHistoricos: r.resultadosHistoricos })
+  }
+
+  function handleClickFila(id: string) {
+    if (cargandoApertura) return
+    if (hayCambiosSinGuardar) {
+      setConfirmandoAperturaId(id)
+      return
+    }
+    abrirPresupuesto(id)
+  }
+
+  function confirmarApertura() {
+    const id = confirmandoAperturaId
+    setConfirmandoAperturaId(null)
+    if (id) abrirPresupuesto(id)
+  }
+
+  function handleNuevaSimulacion() {
+    const nuevo = estadoInicial()
+    setParametros(nuevo.parametros)
+    setSemanasAplazatoriasUsadas(nuevo.semanas)
+    setBaseline(nuevo)
+    setEtiqueta('')
+    setMensaje(null)
+    setContexto({ tipo: 'NUEVA' })
+  }
 
   const setParam = <K extends ClaveNumericaParametros>(campo: K) => (valor: number) =>
     setParametros((prev) => ({ ...prev, [campo]: valor }))
@@ -496,6 +605,31 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
 
   return (
     <div className="space-y-10" data-cotizacion-seguro={estadoCotizacionSeguro} data-cotizacion-seguro-datos={cotizacionSeguro ? Object.keys(cotizacionSeguro.estadoDatos).length : 0}>
+      {/* KAI-29 B3 — contexto de presupuesto cargado (plan.md 18.1). `resultadosHistoricos` solo
+          se usa para comparar (compararHistorico.ts, B1); nunca reconstruye `parametros`. */}
+      {contexto.tipo === 'CARGADA' && (
+        <div className="flex flex-wrap items-center gap-3 p-3 bg-humania-sand/10 border border-humania-sand rounded-md" data-contexto-presupuesto="CARGADA" data-presupuesto-id={contexto.id}>
+          <Badge className="bg-humania-blue hover:bg-humania-blue/90">PRESUPUESTO CARGADO</Badge>
+          <span className="text-sm text-humania-gray">
+            {contexto.etiqueta || 'Sin etiqueta'} — {formatearFechaAdmin(contexto.createdAt)}
+          </span>
+          <Button variant="outline" size="sm" onClick={handleNuevaSimulacion} className="ml-auto rounded-none">
+            Nueva simulación
+          </Button>
+        </div>
+      )}
+
+      {/* Decisión D17 (spec.md 38.9) — el histórico es inmutable: esto solo avisa que guardar creará una fila
+          nueva, nunca modifica la fila cargada. Se deriva de `hayCambiosSinGuardar`, sin estado propio; desaparece
+          al restaurar el snapshot cargado, al cargar otro presupuesto o con "Nueva simulación". Independiente de
+          `resultado`/`errores`: el aviso aplica aunque la edición actual sea momentáneamente inválida. */}
+      {contexto.tipo === 'CARGADA' && hayCambiosSinGuardar && (
+        <div role="status" className="p-3 rounded-md text-sm font-medium flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-900">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          Has modificado un presupuesto guardado. Si lo guardas, se creará una nueva versión y el presupuesto original permanecerá sin cambios.
+        </div>
+      )}
+
       {errores.length > 0 && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-800 text-sm font-medium flex items-start gap-3 rounded-md">
           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -518,6 +652,18 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
             <div role="status" className="p-4 bg-amber-50 border border-amber-300 text-amber-900 text-sm font-bold flex items-center gap-3 rounded-md">
               <AlertTriangle className="w-5 h-5 shrink-0" />
               <p className="tracking-wide">MODELO CON DATOS NO CONFIRMADOS</p>
+            </div>
+          )}
+          {/* KAI-29 B3, spec.md 38.5 — histórico (guardado) vs. actual (recalculado). Solo mientras
+              no haya cambios sin guardar respecto a lo cargado (evita una lectura falsa). */}
+          {comparacion && (
+            <div
+              role="status"
+              className={`p-3 rounded-md text-sm font-medium flex items-center gap-2 ${
+                comparacion.estado === 'COINCIDE' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-amber-50 border border-amber-300 text-amber-900'
+              }`}
+            >
+              {comparacion.estado === 'COINCIDE' ? '✅ Resultado actual coincide con el presupuesto guardado.' : '⚠️ El resultado cambia respecto al presupuesto guardado.'}
             </div>
           )}
           <ResumenEjecutivo resultado={resultado} />
@@ -955,15 +1101,26 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                     </tr>
                   </thead>
                   <tbody>
-                    {guardados.map((g) => (
-                      <tr key={g.id} className="border-b border-neutral-100 last:border-0">
-                        <td className="py-2.5 text-humania-gray">{formatearFechaAdmin(g.created_at)}</td>
-                        <td className="py-2.5">{g.etiqueta || '—'}</td>
-                        <td className="py-2.5 font-mono tabular-nums">{cop(g.resultados.resultadoNeto)}</td>
-                        <td className="py-2.5 font-mono tabular-nums">{pct(g.resultados.roiSobreInversionTotal)}</td>
-                        <td className="py-2.5 text-xs text-humania-gray/60">{g.financial_model_version}</td>
-                      </tr>
-                    ))}
+                    {guardados.map((g) => {
+                      const estaCargada = contexto.tipo === 'CARGADA' && contexto.id === g.id
+                      const abriendoEsta = cargandoApertura === g.id
+                      return (
+                        <tr
+                          key={g.id}
+                          onClick={() => handleClickFila(g.id)}
+                          aria-current={estaCargada ? 'true' : undefined}
+                          className={`border-b border-neutral-100 last:border-0 cursor-pointer transition-colors ${
+                            estaCargada ? 'bg-humania-sand/20 border-l-4 border-l-humania-blue' : 'hover:bg-neutral-50'
+                          } ${abriendoEsta ? 'opacity-50 pointer-events-none' : ''}`}
+                        >
+                          <td className="py-2.5 text-humania-gray">{formatearFechaAdmin(g.created_at)}</td>
+                          <td className="py-2.5">{g.etiqueta || '—'}</td>
+                          <td className="py-2.5 font-mono tabular-nums">{cop(g.resultados.resultadoNeto)}</td>
+                          <td className="py-2.5 font-mono tabular-nums">{pct(g.resultados.roiSobreInversionTotal)}</td>
+                          <td className="py-2.5 text-xs text-humania-gray/60">{g.financial_model_version}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -971,6 +1128,26 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
           </Colapsable>
         </>
       )}
+
+      {/* KAI-29 B3 — confirmación antes de reemplazar una simulación con cambios sin guardar. */}
+      <Dialog open={confirmandoAperturaId !== null} onOpenChange={(open) => { if (!open) setConfirmandoAperturaId(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reemplazar simulación actual</DialogTitle>
+            <DialogDescription>
+              Se cargará el presupuesto seleccionado y se perderán los cambios no guardados de la simulación actual.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmandoAperturaId(null)} className="rounded-none">
+              Cancelar
+            </Button>
+            <Button onClick={confirmarApertura} className="bg-humania-blue hover:bg-humania-blue/90 text-white rounded-none">
+              Cargar presupuesto
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
