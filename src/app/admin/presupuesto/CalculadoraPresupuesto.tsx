@@ -429,7 +429,7 @@ function mensajeErrorApertura(r: Exclude<ResultadoObtenerPresupuesto, { estado: 
     case 'NO_AUTORIZADO':
       return 'No autorizado: solo un SUPER_ADMIN puede abrir presupuestos guardados.'
     case 'ESTRUCTURA_NO_RECONOCIDA':
-      return 'El presupuesto guardado tiene una forma que el sistema no reconoce.'
+      return 'El presupuesto guardado tiene una estructura que el sistema no reconoce.'
     case 'DATOS_INVALIDOS':
       return `El presupuesto guardado tiene datos inválidos: ${r.errores.join('; ')}`
     case 'NO_DETERMINISTA':
@@ -655,7 +655,8 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
             </div>
           )}
           {/* KAI-29 B3, spec.md 38.5 — histórico (guardado) vs. actual (recalculado). Solo mientras
-              no haya cambios sin guardar respecto a lo cargado (evita una lectura falsa). */}
+              no haya cambios sin guardar respecto a lo cargado (evita una lectura falsa). Nunca bloquea
+              la calculadora, la edición de parámetros ni el guardado — es puramente informativo. */}
           {comparacion && (
             <div
               role="status"
@@ -663,7 +664,11 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                 comparacion.estado === 'COINCIDE' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-amber-50 border border-amber-300 text-amber-900'
               }`}
             >
-              {comparacion.estado === 'COINCIDE' ? '✅ Resultado actual coincide con el presupuesto guardado.' : '⚠️ El resultado cambia respecto al presupuesto guardado.'}
+              {comparacion.estado === 'COINCIDE'
+                ? '✅ Resultado actual coincide con el presupuesto guardado.'
+                : comparacion.estado === 'NO_COMPARABLE'
+                  ? '⚠️ No es posible comparar este resultado con el presupuesto guardado.'
+                  : '⚠️ El resultado cambia respecto al presupuesto guardado.'}
             </div>
           )}
           <ResumenEjecutivo resultado={resultado} />
