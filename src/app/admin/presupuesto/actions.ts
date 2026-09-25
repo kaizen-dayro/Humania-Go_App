@@ -10,8 +10,16 @@
 import { createClient } from '@/utils/supabase/server'
 import { calcularMetricas } from '@/lib/domain/presupuesto/metricas'
 import type { ResultadoGuardado } from '@/lib/domain/presupuesto/compararHistorico'
+import { calcularAbonoMinimo } from '@/lib/domain/presupuesto/abonoMinimo'
 import { clavesDesconocidas } from '@/lib/domain/presupuesto/esquemaSnapshot'
 import { validarParametros, type ParametrosPresupuesto } from '@/lib/domain/presupuesto/parametros'
+import {
+  CLAVE_POLITICA_FINANCIERA,
+  evaluarPolitica,
+  leerPoliticaGuardada,
+  validarPolitica,
+  type PoliticaFinanciera,
+} from '@/lib/domain/presupuesto/politicaFinanciera'
 import { reconocerSnapshot, type ResultadoReconocimientoSnapshot } from '@/lib/domain/presupuesto/reconocerSnapshot'
 import { FINANCIAL_MODEL_VERSION } from '@/lib/domain/presupuesto/version'
 import { leerCotizacionSeguroVigente } from './cotizacionSeguro'
@@ -28,7 +36,12 @@ async function requireSuperAdmin() {
   return { supabase, session, autorizado }
 }
 
-export async function guardarPresupuesto(parametrosCliente: ParametrosPresupuesto, semanasAplazatoriasUsadas: number, etiqueta?: string) {
+export async function guardarPresupuesto(
+  parametrosCliente: ParametrosPresupuesto,
+  semanasAplazatoriasUsadas: number,
+  etiqueta: string | undefined,
+  politicaCliente: PoliticaFinanciera,
+) {
   const { supabase, session, autorizado } = await requireSuperAdmin()
   if (!session) return { success: false, error: 'No autorizado.' }
   if (!autorizado) return { success: false, error: 'No autorizado: solo un SUPER_ADMIN puede guardar presupuestos.' }
@@ -41,6 +54,20 @@ export async function guardarPresupuesto(parametrosCliente: ParametrosPresupuest
   const clavesInesperadas = clavesDesconocidas(parametrosCliente as unknown as Record<string, unknown>)
   if (clavesInesperadas.length > 0) {
     return { success: false, error: `parametros contiene clave(s) no permitida(s): ${clavesInesperadas.join(', ')}` }
+  }
+  // La política D8 llega como argumento propio, nunca dentro de los parámetros del motor (spec.md 39.9).
+  if (CLAVE_POLITICA_FINANCIERA in (parametrosCliente as unknown as Record<string, unknown>)) {
+    return { success: false, error: `parametros no puede contener "${CLAVE_POLITICA_FINANCIERA}": la política se envía por separado.` }
+  }
+  // Desde D8 todo presupuesto se guarda con su política congelada (spec.md 39.1.3): sin política válida no se guarda.
+  const erroresPolitica = validarPolitica(politicaCliente)
+  if (erroresPolitica.length > 0) {
+    return { success: false, error: `Política financiera inválida: ${erroresPolitica.join(' ')}` }
+  }
+  const politica: PoliticaFinanciera = {
+    version: politicaCliente.version,
+    roiCortes: [...politicaCliente.roiCortes],
+    paybackCortesSemanas: [...politicaCliente.paybackCortesSemanas],
   }
 
   // La cotización del seguro es INFORMATIVA (no entra a ningún indicador) y la base de datos es la
@@ -105,19 +132,23 @@ export async function guardarPresupuesto(parametrosCliente: ParametrosPresupuest
     ingresoOperativoHumania: flujo.ingresoOperativoHumania,
     ingresoAplazatoriasAcumulado: flujo.ingresoAplazatoriasAcumulado,
   }
-  const resultadosParaGuardar = { ...resultadosSinSeries, flujo: flujoSinSeries }
+  // D8 y D6 se RECALCULAN aquí con la política validada (nunca se toman del cliente). Se guardan
+  // como el resultado que vio el usuario; nunca participan en la reconstrucción de `parametros`.
+  const evaluacionPolitica = evaluarPolitica(resultados, politica)
+  const abonoMinimo = calcularAbonoMinimo(parametros, semanasAplazatoriasUsadas, politica)
+  const resultadosParaGuardar = { ...resultadosSinSeries, flujo: flujoSinSeries, evaluacionPolitica, abonoMinimo }
 
   const { data, error } = await supabase
     .from('presupuestos_financieros')
     .insert({
       financial_model_version: FINANCIAL_MODEL_VERSION,
       etiqueta: etiqueta?.trim() || null,
-      parametros,
+      parametros: { ...parametros, [CLAVE_POLITICA_FINANCIERA]: politica },
       semanas_aplazatorias_usadas: semanasAplazatoriasUsadas,
       resultados: resultadosParaGuardar,
       creado_por: session.user.id,
     })
-    .select('id')
+    .select('id, created_at')
     .single()
 
   if (error) {
@@ -125,7 +156,15 @@ export async function guardarPresupuesto(parametrosCliente: ParametrosPresupuest
     return { success: false, error: error.message }
   }
 
-  return { success: true, id: data.id, resultados }
+  return {
+    success: true,
+    id: data.id as string,
+    createdAt: data.created_at as string,
+    resultados,
+    // Lo que realmente quedó guardado (sin series): la interfaz lo usa como "histórico" del presupuesto recién creado.
+    resultadosGuardados: resultadosParaGuardar as unknown as ResultadoGuardado,
+    politica,
+  }
 }
 
 export async function listarPresupuestos() {
@@ -175,6 +214,8 @@ export type ResultadoObtenerPresupuesto =
       financialModelVersion: string
       semanasAplazatoriasUsadas: number
       parametros: ParametrosPresupuesto
+      /** Política D8 congelada con el presupuesto; null si se guardó antes de D8 (nunca se completa con la vigente). */
+      politicaFinanciera: PoliticaFinanciera | null
       resultadosHistoricos: ResultadoGuardado
       versionConocida: boolean
       clavesIgnoradas: readonly string[]
@@ -202,6 +243,9 @@ export async function obtenerPresupuesto(id: string): Promise<ResultadoObtenerPr
   const reconocido = reconocerSnapshot(data.parametros, data.financial_model_version)
   if (reconocido.estado !== 'DETERMINISTA') return reconocido
 
+  const lecturaPolitica = leerPoliticaGuardada(data.parametros)
+  if (lecturaPolitica.estado === 'INVALIDA') return { estado: 'DATOS_INVALIDOS', errores: lecturaPolitica.errores }
+
   if (!Number.isInteger(data.semanas_aplazatorias_usadas) || data.semanas_aplazatorias_usadas < 0) {
     return { estado: 'DATOS_INVALIDOS', errores: ['semanas_aplazatorias_usadas debe ser un entero mayor o igual a 0'] }
   }
@@ -213,6 +257,7 @@ export async function obtenerPresupuesto(id: string): Promise<ResultadoObtenerPr
     financialModelVersion: data.financial_model_version,
     semanasAplazatoriasUsadas: data.semanas_aplazatorias_usadas,
     parametros: reconocido.parametros,
+    politicaFinanciera: lecturaPolitica.estado === 'VALIDA' ? lecturaPolitica.politica : null,
     resultadosHistoricos: data.resultados as ResultadoGuardado,
     versionConocida: reconocido.versionConocida,
     clavesIgnoradas: reconocido.clavesIgnoradas,
