@@ -61,5 +61,15 @@ export const CLAVES_PARAMETROS_V1: readonly (keyof ParametrosPresupuesto)[] = [
  * Cada contexto decide su propia política sobre el mismo resultado; nunca dos listas.
  */
 export function clavesDesconocidas(obj: Record<string, unknown>): string[] {
-  return Object.keys(obj).filter((clave) => !(CLAVES_PARAMETROS_V1 as readonly string[]).includes(clave))
+  return Object.keys(obj).filter(
+    (clave) => !(CLAVES_PARAMETROS_V1 as readonly string[]).includes(clave) && !(CLAVES_SNAPSHOT_ADICIONALES as readonly string[]).includes(clave),
+  )
 }
+
+/**
+ * Claves del snapshot guardado que NO son parámetros del motor (spec.md 39.9): viven en el mismo
+ * JSONB `parametros`, pero nunca entran a `ParametrosPresupuesto` ni a `calcularMetricas`.
+ * `politicaFinanciera` = política D8 congelada con el presupuesto (politicaFinanciera.ts).
+ * `reconocerSnapshot` no las proyecta a los parámetros; se leen con su propia función.
+ */
+export const CLAVES_SNAPSHOT_ADICIONALES = ['politicaFinanciera'] as const
