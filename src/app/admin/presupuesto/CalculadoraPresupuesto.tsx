@@ -343,11 +343,14 @@ function DecisionOperacion({
   abonoMinimo,
   parametros,
   sinPolitica,
+  politicaInvalida,
 }: {
   evaluacion: EvaluacionPolitica | null
   abonoMinimo: ResultadoAbonoMinimo | null
   parametros: ParametrosPresupuesto
   sinPolitica: boolean
+  /** La política existe pero sus umbrales no son válidos: no se evalúa (nunca se inventa un veredicto). */
+  politicaInvalida: boolean
 }) {
   return (
     <Tarjeta titulo="Decisión de la operación">
@@ -355,6 +358,12 @@ function DecisionOperacion({
         Esta sección evalúa exclusivamente la operación financiera del activo — no tiene relación con la evaluación de candidatos.
       </p>
       {sinPolitica && <p className="text-sm font-medium text-amber-900">{T.sinPolitica}</p>}
+      {politicaInvalida && (
+        <div role="alert" data-estado-politica="INVALIDA" className="p-3 rounded-md text-sm font-medium flex items-start gap-2 bg-red-50 border border-red-200 text-red-800">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          {TN.politicaInvalida}
+        </div>
+      )}
       {evaluacion && (
         <div className="space-y-3" data-veredicto={evaluacion.veredicto}>
           <div className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 ${TONO_VEREDICTO[evaluacion.veredicto]}`}>
@@ -526,6 +535,11 @@ function FlujoChart({ modelo }: { modelo: ModeloGraficoFlujo }) {
 
 // ===== D7-2 — evolución del saldo del crédito =====
 
+/** Colores compartidos por las líneas y su leyenda, para que siempre coincidan. */
+const COLOR_SALDO_NORMAL = '#002B4A'
+const COLOR_SALDO_CON_ABONO = '#047857'
+const OPACIDAD_SALDO_NORMAL_CON_ABONO = 0.45
+
 function SaldoChart({ modelo }: { modelo: ModeloGraficoSaldo }) {
   const { normal, conAbono, mesFinContrato, mesFinCredito, principal } = modelo
   const W = 640, H = 220
@@ -551,8 +565,8 @@ function SaldoChart({ modelo }: { modelo: ModeloGraficoSaldo }) {
         <text x={x(mesFinContrato)} y={MT - 6} textAnchor="middle" fontSize={10} fill="#737373">
           Fin del contrato
         </text>
-        <path d={ruta(normal)} fill="none" stroke="#002B4A" strokeWidth={conAbono ? 1.5 : 2.5} opacity={conAbono ? 0.45 : 1} />
-        {conAbono && <path d={ruta(conAbono)} fill="none" stroke="#047857" strokeWidth={2.5} />}
+        <path d={ruta(normal)} fill="none" stroke={COLOR_SALDO_NORMAL} strokeWidth={conAbono ? 1.5 : 2.5} opacity={conAbono ? OPACIDAD_SALDO_NORMAL_CON_ABONO : 1} />
+        {conAbono && <path d={ruta(conAbono)} fill="none" stroke={COLOR_SALDO_CON_ABONO} strokeWidth={2.5} />}
         <line x1={ML} x2={W - MR} y1={MT + PH} y2={MT + PH} stroke="#d4d4d4" strokeWidth={1} />
         <text x={ML} y={H - 8} fontSize={10} fill="#78716c">0</text>
         <text x={W - MR} y={H - 8} textAnchor="end" fontSize={10} fill="#78716c">
@@ -561,11 +575,11 @@ function SaldoChart({ modelo }: { modelo: ModeloGraficoSaldo }) {
       </svg>
       <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-humania-gray/70 mt-2">
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block w-4 h-0.5 bg-humania-blue" /> {TN.leyendaSaldoNormal}
+          <span className="inline-block w-4 h-0.5" style={{ backgroundColor: COLOR_SALDO_NORMAL, opacity: conAbono ? OPACIDAD_SALDO_NORMAL_CON_ABONO : 1 }} /> {TN.leyendaSaldoNormal}
         </span>
         {conAbono && (
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block w-4 h-0.5 bg-emerald-700" /> {TN.leyendaSaldoConAbono}
+            <span className="inline-block w-4 h-0.5" style={{ backgroundColor: COLOR_SALDO_CON_ABONO }} /> {TN.leyendaSaldoConAbono}
           </span>
         )}
         <span>{TN.finCredito(mesFinCredito)}</span>
@@ -595,12 +609,22 @@ function SensibilidadAbono({
   const y = (roi: number) => MT + PH - ((roi - roiMinGrafico) / (roiMax - roiMinGrafico)) * PH
   const ruta = `M ${puntos.map((p) => `${x(p.porcentaje)},${y(p.roi)}`).join(' L ')}`
   const minimo = politica.roiCortes[1]
+  const marcasY = [0, 0.25, 0.5, 0.75, 1].map((f) => roiMinGrafico + f * (roiMax - roiMinGrafico))
 
   return (
     <div className="space-y-4">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={TN.tituloSensibilidad}>
         {/* Bandas de ROI de la política */}
         <rect x={ML} width={PW} y={y(roiMax)} height={Math.max(0, y(minimo) - y(roiMax))} fill="#ecfdf5" />
+        {/* Eje Y: solo presentación, misma escala que la curva */}
+        {marcasY.map((v) => (
+          <g key={v}>
+            <line x1={ML} x2={W - MR} y1={y(v)} y2={y(v)} stroke="#e5e5e5" strokeWidth={1} />
+            <text x={ML - 6} y={y(v)} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="#78716c" fontFamily="monospace">
+              {pct(v)}
+            </text>
+          </g>
+        ))}
         <line x1={ML} x2={W - MR} y1={y(minimo)} y2={y(minimo)} stroke="#047857" strokeWidth={1.25} strokeDasharray="4 3" />
         <text x={W - MR} y={y(minimo) - 5} textAnchor="end" fontSize={10} fill="#047857" fontWeight={600}>
           {T.roiPrincipal} ≥ {pct(minimo)}
@@ -1071,7 +1095,7 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
           )}
 
           <ResumenEjecutivo resultado={resultado} parametros={parametros} evaluacion={evaluacion} />
-          <DecisionOperacion evaluacion={evaluacion} abonoMinimo={abonoMinimo} parametros={parametros} sinPolitica={politica === null} />
+          <DecisionOperacion evaluacion={evaluacion} abonoMinimo={abonoMinimo} parametros={parametros} sinPolitica={politica === null} politicaInvalida={politica !== null && erroresPolitica.length > 0} />
           <EstadoOperacion resultado={resultado} parametros={parametros} />
 
           {/* ================= ZONA DE ANÁLISIS ================= */}

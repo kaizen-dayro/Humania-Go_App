@@ -99,6 +99,7 @@ export const TEXTOS_NUEVOS_PENDIENTES = {
     paybackMaximo: 'Payback máximo (fin de RIESGO ELEVADO)',
   },
   usarPoliticaVigente: 'Usar la política vigente',
+  politicaInvalida: 'Política financiera inválida: la operación no se puede evaluar hasta corregir los umbrales en Configuración › Política financiera.',
   columnaVeredicto: 'Política',
 } as const
 
