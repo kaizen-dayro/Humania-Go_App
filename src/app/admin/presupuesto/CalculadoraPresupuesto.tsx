@@ -47,6 +47,7 @@ import {
 } from '@/lib/domain/presupuesto/politicaFinanciera'
 import { calcularAbonoMinimo, type ResultadoAbonoMinimo } from '@/lib/domain/presupuesto/abonoMinimo'
 import {
+  abonoActivo,
   modeloGraficoFlujo,
   modeloGraficoSaldo,
   sensibilidadAbono,
@@ -59,6 +60,7 @@ import {
   TEXTOS_CLASIFICACION_PAYBACK,
   TEXTOS_CLASIFICACION_ROI,
   TEXTOS_NUEVOS_PENDIENTES as TN,
+  TEXTOS_SIMULACION_ABONO as TA,
   etiquetarErrorValidacion,
   textoIncumplimiento,
   textoObservacion,
@@ -833,6 +835,8 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
   )
   const modeloFlujo = useMemo(() => (resultado ? modeloGraficoFlujo(resultado) : null), [resultado])
   const modeloSaldo = useMemo(() => (resultado ? modeloGraficoSaldo(resultado, parametros) : null), [resultado, parametros])
+  // Escenario activo de la simulación manual del abono (mismo parámetro del motor).
+  const abonoManual = useMemo(() => (resultado ? abonoActivo(resultado, parametros) : null), [resultado, parametros])
 
   // Financiación del seguro DE ESTE PRESUPUESTO (spec.md 36): sale solo de sus parámetros (`seguro.cotizacion`) y de su
   // cronograma nominal; no es un valor global y no participa en ningún indicador.
@@ -1362,13 +1366,23 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                       onChange={(v) => setParam('tasaEfectivaAnualCredito')(v / 100)}
                     />
                     <CampoNumero label="Plazo del crédito bancario" suffix="meses" valor={parametros.mesesCreditoVehiculo} onChange={setParam('mesesCreditoVehiculo')} />
-                    <CampoNumero
-                      label="Porcentaje de abono a capital"
-                      descripcion={`Máximo ${PORCENTAJE_ABONO_CAPITAL_MAXIMO * 100}% de la cuota mensual original, 100% a capital, reducción de plazo. 0% = sin abono.`}
-                      suffix="%"
-                      valor={Math.round(parametros.porcentajeAbonoCapital * 1000) / 10}
-                      onChange={(v) => setParam('porcentajeAbonoCapital')(Math.min(PORCENTAJE_ABONO_CAPITAL_MAXIMO, Math.max(0, v) / 100))}
-                    />
+                    {/* Simulación manual del abono: alimenta el MISMO `porcentajeAbonoCapital` que usan el motor,
+                        la amortización, D7 y la sensibilidad. D6 no lo lee (calcula su mínimo por su cuenta). */}
+                    <div data-campo="abono-manual" className="space-y-1.5">
+                      <CampoNumero
+                        label={TA.etiqueta}
+                        descripcion={`Máximo ${PORCENTAJE_ABONO_CAPITAL_MAXIMO * 100}% de la cuota mensual original, 100% a capital, reducción de plazo. 0% = sin abono.`}
+                        suffix="%"
+                        valor={Math.round(parametros.porcentajeAbonoCapital * 1000) / 10}
+                        onChange={(v) => setParam('porcentajeAbonoCapital')(Math.min(PORCENTAJE_ABONO_CAPITAL_MAXIMO, Math.max(0, v) / 100))}
+                      />
+                      {abonoManual && (
+                        <div data-abono-estimado={abonoManual.montoMensual}>
+                          <p className="text-sm font-semibold text-humania-blue tabular-nums">{TA.estimado(cop(abonoManual.montoMensual))}</p>
+                          <p className="text-xs text-humania-gray/60">{TA.aplicacion(cop(abonoManual.cuotaMensualOriginal), abonoManual.mesInicio)}</p>
+                        </div>
+                      )}
+                    </div>
                     <CampoNumero
                       label="Mes desde el cual aplica el abono"
                       suffix="mes"

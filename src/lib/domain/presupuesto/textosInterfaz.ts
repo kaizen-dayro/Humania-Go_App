@@ -103,6 +103,16 @@ export const TEXTOS_NUEVOS_PENDIENTES = {
   columnaVeredicto: 'Política',
 } as const
 
+/**
+ * Simulación manual del abono (2026-09-25). `etiqueta` y `estimado` son los textos literales
+ * pedidos por Humania Go; `aplicacion` es nuevo, pendiente de aprobación en el PR.
+ */
+export const TEXTOS_SIMULACION_ABONO = {
+  etiqueta: 'Abono mensual al capital (%)',
+  estimado: (monto: string) => `Abono mensual estimado: ${monto}/mes`,
+  aplicacion: (cuota: string, mes: number) => `Se aplica al crédito simulado: sobre su cuota mensual original de ${cuota}, desde el mes ${mes}.`,
+} as const
+
 /** Razón de negocio de cada incumplimiento, con los textos aprobados. */
 export function textoIncumplimiento(i: Incumplimiento, formatearPct: (v: number) => string): string {
   switch (i.tipo) {
@@ -135,7 +145,7 @@ export const ETIQUETAS_CAMPOS: Record<string, string> = {
   principalCreditoBancario: 'Principal financiado (crédito vehículo+GPS)',
   tasaEfectivaAnualCredito: 'Tasa efectiva anual del crédito',
   mesesCreditoVehiculo: 'Plazo del crédito bancario',
-  porcentajeAbonoCapital: 'Porcentaje de abono a capital',
+  porcentajeAbonoCapital: 'Abono mensual al capital (%)',
   mesInicioAbonoCapital: 'Mes desde el cual aplica el abono',
   valorVentaContractualActivo: 'Valor de venta contractual del activo',
   cuotaSemanalConductor: 'Cuota semanal total del conductor',
