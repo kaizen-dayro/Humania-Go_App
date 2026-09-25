@@ -37,8 +37,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
       {/* Contenido Principal -- pt-16 en celular deja espacio para la barra
           superior fija de AdminSidebar; md:pt-0 porque en escritorio esa
-          barra no existe (el sidebar siempre está visible aparte) */}
-      <main className="flex-1 md:ml-64 pt-16 md:pt-0 flex flex-col min-h-screen">
+          barra no existe (el sidebar siempre está visible aparte). min-w-0:
+          como elemento flexible, sin él `main` no puede ser más angosto que su
+          contenido más ancho (p. ej. una tabla con scroll propio), y en celular
+          toda la página se desbordaba horizontalmente. */}
+      <main className="flex-1 min-w-0 md:ml-64 pt-16 md:pt-0 flex flex-col min-h-screen">
         <header className="min-h-16 bg-white border-b border-neutral-200 flex flex-wrap items-center justify-end gap-3 px-4 py-2 md:px-8 md:py-0">
           {esSuperAdmin && <RecuperacionNotificacion solicitudesIniciales={solicitudesRecuperacion as any} />}
           <EditarNombreButton nombreActual={caller?.nombre ?? null} correo={session.user.email!} />
