@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verificar:presupuesto": "tsc -p src/lib/domain/presupuesto/tsconfig.verificacion.json && node .verificacion-presupuesto/presupuesto/verificacion.js && node .verificacion-presupuesto/presupuesto/verificacionModeloVigente.js && node .verificacion-presupuesto/presupuesto/verificacionPresupuestosGuardados.js && node .verificacion-presupuesto/presupuesto/verificacionPolitica.js && node .verificacion-presupuesto/presupuesto/verificacionAbonoMinimo.js && node .verificacion-presupuesto/presupuesto/verificacionVistas.js",
+    "verificar:presupuesto": "tsc -p src/lib/domain/presupuesto/tsconfig.verificacion.json && node .verificacion-presupuesto/presupuesto/verificacion.js && node .verificacion-presupuesto/presupuesto/verificacionModeloVigente.js && node .verificacion-presupuesto/presupuesto/verificacionPresupuestosGuardados.js && node .verificacion-presupuesto/presupuesto/verificacionPolitica.js && node .verificacion-presupuesto/presupuesto/verificacionAbonoMinimo.js && node .verificacion-presupuesto/presupuesto/verificacionVistas.js && node .verificacion-presupuesto/presupuesto/verificacionSimulacionManual.js",
     "verificar:seguros": "tsc -p src/lib/domain/seguros/tsconfig.verificacion.json && node .verificacion-seguros/verificacion.js",
     "verificar:linea-base": "tsc -p src/lib/domain/presupuesto/tsconfig.verificacion.json && node .verificacion-presupuesto/presupuesto/verificacionLineaBase.js",
     "verificar:financiero": "npm run verificar:presupuesto && npm run verificar:seguros && node .verificacion-presupuesto/presupuesto/verificacionLineaBase.js"

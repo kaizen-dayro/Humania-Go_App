@@ -89,6 +89,33 @@ export function modeloGraficoSaldo(r: ResultadoMetricas, p: ParametrosPresupuest
   }
 }
 
+// ===== Simulación manual del abono (escenario activo) =====
+
+export interface AbonoActivo {
+  /** El mismo `porcentajeAbonoCapital` que usa el motor (fracción de la cuota mensual original). */
+  porcentaje: number
+  /** Cuota mensual original del crédito simulado (la base del abono en `amortizarCreditoConAbono`). */
+  cuotaMensualOriginal: number
+  /** porcentaje × cuota mensual original: abono extra de cada mes desde el mes de inicio. */
+  montoMensual: number
+  mesInicio: number
+}
+
+/**
+ * Escenario activo del abono manual. No calcula nada nuevo: lee la cuota mensual original del
+ * cronograma normal del MISMO resultado (misma base que el motor y que D6). null en Recursos propios.
+ */
+export function abonoActivo(r: ResultadoMetricas, p: ParametrosPresupuesto): AbonoActivo | null {
+  if (!r.amortizacionNormal) return null
+  const cuotaMensualOriginal = r.amortizacionNormal.cuotaMensual
+  return {
+    porcentaje: p.porcentajeAbonoCapital,
+    cuotaMensualOriginal,
+    montoMensual: p.porcentajeAbonoCapital * cuotaMensualOriginal,
+    mesInicio: p.mesInicioAbonoCapital,
+  }
+}
+
 // ===== D7-3: sensibilidad del abono frente a ROI y payback =====
 
 /** Grilla de abonos ya usada en la línea base y en T-31 (fracción de la cuota mensual original). */
