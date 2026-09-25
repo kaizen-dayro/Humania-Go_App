@@ -191,13 +191,14 @@ export default async function CandidatoDetail({ params, searchParams }: { params
       <main className="max-w-5xl mx-auto px-6 mt-8 space-y-6">
         
         {/* Encabezado del Candidato */}
-        <div className="bg-white border border-neutral-200 p-8 rounded-lg shadow-sm flex justify-between items-start">
-          <div>
+        {/* En celular se apila (el estado, ej. REVISION_PRELIMINAR, es una sola palabra que no cabe junto al nombre); desde sm, fila. */}
+        <div className="bg-white border border-neutral-200 p-8 rounded-lg shadow-sm flex flex-col gap-6 sm:flex-row sm:justify-between sm:items-start">
+          <div className="min-w-0">
             <p className="text-xs font-bold text-humania-gray/50 tracking-widest mb-2">CANDIDATO</p>
             <h1 className="text-3xl font-bold text-humania-blue">{candidato.nombres} {candidato.apellidos}</h1>
             <p className="text-sm text-humania-gray mt-2">ID: {candidato.numero_documento} • Registrado el {new Date(candidato.created_at).toLocaleDateString()}</p>
           </div>
-          <div className="text-right">
+          <div className="sm:text-right sm:shrink-0">
             <p className="text-xs font-bold text-humania-gray/50 tracking-widest mb-2">ESTADO ACTUAL</p>
             <div className="inline-block px-3 py-1 bg-neutral-100 text-humania-blue font-bold text-sm rounded-sm">
               {candidato.estado}
