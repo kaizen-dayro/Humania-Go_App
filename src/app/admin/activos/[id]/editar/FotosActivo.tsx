@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { createClient } from '@/utils/supabase/client'
 import { registrarActivoFoto, getActivoFotos, eliminarActivoFoto } from '../../../actions'
 import { capitalizarPalabras } from '@/lib/validation'
+import { formatearFechaAdmin } from '@/lib/format'
 
 const CATEGORIAS_EVIDENCIA: { value: string, label: string }[] = [
   { value: 'FRONTAL', label: 'Frontal' },
@@ -325,7 +326,7 @@ export const FotosActivo = forwardRef<FotosActivoHandle, { activoId: string | nu
                 <p className="text-xs text-amber-700">Reemplazará la fotografía principal actual al guardar los cambios.</p>
               ) : principalVigente ? (
                 <div className="text-xs text-humania-gray space-y-1">
-                  <p>Vigente desde {new Date(principalVigente.created_at).toLocaleString()}</p>
+                  <p>Vigente desde {formatearFechaAdmin(principalVigente.created_at)}</p>
                   <p>Registrada por: {principalVigente.usuario_email}</p>
                   <button
                     type="button"
@@ -373,7 +374,7 @@ export const FotosActivo = forwardRef<FotosActivoHandle, { activoId: string | nu
                 {principalesHistoricas.map(f => (
                   <li key={f.id} className="flex items-center gap-3">
                     <img src={f.url || ''} alt="Foto principal histórica" className="w-16 h-10 object-cover rounded border border-neutral-200 opacity-70" />
-                    <span>{new Date(f.created_at).toLocaleString()} — {f.usuario_email}</span>
+                    <span>{formatearFechaAdmin(f.created_at)} — {f.usuario_email}</span>
                   </li>
                 ))}
               </ul>
@@ -493,7 +494,7 @@ export const FotosActivo = forwardRef<FotosActivoHandle, { activoId: string | nu
                   <div className="p-2">
                     <p className="text-xs font-bold text-humania-blue">{labelCategoria(f.categoria)}</p>
                     {f.descripcion && <p className="text-xs text-humania-gray">{f.descripcion}</p>}
-                    <p className="text-[10px] text-humania-gray/60 mt-1">{new Date(f.created_at).toLocaleDateString()} — {f.usuario_email}</p>
+                    <p className="text-[10px] text-humania-gray/60 mt-1">{formatearFechaAdmin(f.created_at)} — {f.usuario_email}</p>
                   </div>
                 </div>
               ))}

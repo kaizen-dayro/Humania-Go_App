@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { addCandidatoObservacion } from '@/app/admin/actions'
 import { DESCRIPTIVE_TEXT } from '@/lib/validation'
+import { formatearFechaAdmin } from '@/lib/format'
 
 export type Observacion = {
   id: string
@@ -90,7 +91,7 @@ export function ObservacionesSection({ candidatoId, observaciones }: { candidato
             <div key={o.id} className="text-sm">
               <p className="text-humania-gray whitespace-pre-wrap">{o.texto}</p>
               <p className="text-xs text-humania-gray/50 mt-0.5">
-                {new Date(o.created_at).toLocaleString()} · {o.usuario_email}
+                {formatearFechaAdmin(o.created_at)} · {o.usuario_email}
               </p>
             </div>
           ))}

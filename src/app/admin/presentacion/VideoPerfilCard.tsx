@@ -10,6 +10,7 @@ import { CheckCircle2, AlertCircle, PlayCircle } from 'lucide-react'
 import { LETTERS_WITH_PUNCTUATION, capitalizarPalabras } from '@/lib/validation'
 import { extractYouTubeVideoId } from '@/lib/youtube'
 import { setPresentacionVideo } from '../actions'
+import { formatearFechaAdmin } from '@/lib/format'
 
 type Perfil = 'GENERAL' | 'CONDUCTOR' | 'INDEPENDIENTE'
 
@@ -88,7 +89,7 @@ export function VideoPerfilCard({ perfil, titulo: tituloCard, descripcion, histo
             <div className="min-w-0">
               <p className="text-base font-bold text-humania-blue">{actual.titulo || 'Sin título'}</p>
               <p className="text-xs text-humania-gray/70 mt-1">ID: {actual.youtube_video_id}</p>
-              <p className="text-xs text-humania-gray/70">Puesto por {actual.admin_users?.[0]?.nombre || '—'} · {new Date(actual.creado_en).toLocaleString()}</p>
+              <p className="text-xs text-humania-gray/70">Puesto por {actual.admin_users?.[0]?.nombre || '—'} · {formatearFechaAdmin(actual.creado_en)}</p>
               <p className="text-sm text-humania-gray mt-2">{actual.motivo}</p>
             </div>
           </div>
@@ -149,7 +150,7 @@ export function VideoPerfilCard({ perfil, titulo: tituloCard, descripcion, histo
               <div key={v.id} className="border border-neutral-100 rounded-md p-4 flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-humania-blue">{v.titulo || 'Sin título'} <span className="font-normal text-humania-gray/60">— {v.youtube_video_id}</span></p>
-                  <p className="text-xs text-humania-gray/70 mt-0.5">Puesto por {v.admin_users?.[0]?.nombre || '—'} · {new Date(v.creado_en).toLocaleString()}</p>
+                  <p className="text-xs text-humania-gray/70 mt-0.5">Puesto por {v.admin_users?.[0]?.nombre || '—'} · {formatearFechaAdmin(v.creado_en)}</p>
                   <p className="text-xs text-humania-gray mt-1">{v.motivo}</p>
                 </div>
               </div>
