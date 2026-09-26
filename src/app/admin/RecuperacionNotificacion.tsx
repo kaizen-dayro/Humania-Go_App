@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { KeyRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { aprobarRecuperacionAction, rechazarRecuperacionAction } from './actions'
+import { formatearFechaAdmin } from '@/lib/format'
 
 type Solicitud = {
   id: string
@@ -80,7 +81,7 @@ export function RecuperacionNotificacion({ solicitudesIniciales }: { solicitudes
                 <div>
                   <p className="text-sm font-semibold text-humania-blue">{nombreAdmin(s)}</p>
                   <p className="text-xs text-humania-gray">{s.correo}</p>
-                  <p className="text-xs text-humania-gray/70">{new Date(s.solicitado_en).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                  <p className="text-xs text-humania-gray/70">{formatearFechaAdmin(s.solicitado_en)}</p>
                 </div>
                 {error[s.id] && <p className="text-xs text-red-600">{error[s.id]}</p>}
                 <div className="flex gap-2">

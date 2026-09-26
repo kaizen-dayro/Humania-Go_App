@@ -16,7 +16,7 @@ import { ReferenciaLaboralSection, type ReferenciaLaboralRow } from './Referenci
 import { CollapsibleCard } from './CollapsibleCard'
 import { PagosSemanalesSection } from './PagosSemanalesSection'
 import { getCandidateStatusHistory, getCandidatoObservaciones } from '../../actions'
-import { formatearSoloFecha } from '@/lib/format'
+import { formatearSoloFecha, formatearFechaAdmin } from '@/lib/format'
 
 // UI Helpers -- fuera del componente (puros, sin closures sobre estado)
 // para que no se recreen en cada render (lint react-hooks/no-nested-component-definitions).
@@ -196,7 +196,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
           <div className="min-w-0">
             <p className="text-xs font-bold text-humania-gray/50 tracking-widest mb-2">CANDIDATO</p>
             <h1 className="text-3xl font-bold text-humania-blue">{candidato.nombres} {candidato.apellidos}</h1>
-            <p className="text-sm text-humania-gray mt-2">ID: {candidato.numero_documento} • Registrado el {new Date(candidato.created_at).toLocaleDateString()}</p>
+            <p className="text-sm text-humania-gray mt-2">ID: {candidato.numero_documento} • Registrado el {formatearFechaAdmin(candidato.created_at)}</p>
           </div>
           <div className="sm:text-right sm:shrink-0">
             <p className="text-xs font-bold text-humania-gray/50 tracking-widest mb-2">ESTADO ACTUAL</p>
@@ -329,7 +329,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
                   label="Monto Total"
                   value={typeof candidato.simit_total_fines === 'number' ? `$${candidato.simit_total_fines.toLocaleString('es-CO')}` : null}
                 />
-                <DataPoint label="Fecha de Consulta" value={candidato.simit_consultado_at ? new Date(candidato.simit_consultado_at).toLocaleString() : null} />
+                <DataPoint label="Fecha de Consulta" value={candidato.simit_consultado_at ? formatearFechaAdmin(candidato.simit_consultado_at) : null} />
               </div>
             ) : (
               <p className="text-sm text-neutral-500 font-medium">Postulación anterior a esta validación — sin consulta SIMIT registrada.</p>
@@ -344,7 +344,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
                 <p className="text-sm text-neutral-500 mt-6 pt-4 border-t border-neutral-100">
                   ⚠ Esta postulación disparó la revisión de comparendos —
                   resuelta como <strong>{candidato.comparendos_revision_resultado === 'CONTINUA' ? 'Continuar proceso' : 'Descartado por comparendos'}</strong>
-                  {candidato.comparendos_revision_resuelta_en && ` el ${new Date(candidato.comparendos_revision_resuelta_en).toLocaleString()}`}.
+                  {candidato.comparendos_revision_resuelta_en && ` el ${formatearFechaAdmin(candidato.comparendos_revision_resuelta_en)}`}.
                   {candidato.comparendos_revision_nota && (
                     <>
                       <br />Nota: {candidato.comparendos_revision_nota}
@@ -464,7 +464,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
                   <div key={auth.id} className={`grid md:grid-cols-4 gap-y-4 gap-x-8 ${idx > 0 ? 'pt-4 border-t border-neutral-100' : ''}`}>
                     <DataPoint label="Estado" value={auth.authorized ? 'Autorizada' : 'No autorizada'} />
                     <DataPoint label="Versión de política" value={auth.policy_version} />
-                    <DataPoint label="Fecha de autorización" value={new Date(auth.authorized_at).toLocaleString()} />
+                    <DataPoint label="Fecha de autorización" value={formatearFechaAdmin(auth.authorized_at)} />
                     <DataPoint label="Canal" value={auth.authorization_channel} />
                   </div>
                 ))}
@@ -532,7 +532,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
                         <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded ${badge}`}>
                           {h.tipo_evento?.replace(/_/g, ' ')}
                         </span>
-                        <span className="text-xs text-humania-gray/70">{new Date(h.created_at).toLocaleString()}</span>
+                        <span className="text-xs text-humania-gray/70">{formatearFechaAdmin(h.created_at)}</span>
                       </div>
                       <p className="text-sm font-medium text-humania-blue">
                         {h.estado_anterior ? `${h.estado_anterior} → ${h.estado_nuevo}` : h.estado_nuevo}

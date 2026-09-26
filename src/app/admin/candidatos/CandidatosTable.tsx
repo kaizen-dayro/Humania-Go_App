@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { BulkStatusModal } from './BulkStatusModal'
 import { Download } from 'lucide-react'
 import writeExcelFile from 'write-excel-file/universal'
+import { formatearFechaAdmin } from '@/lib/format'
 
 const GENEROS: Record<string, string> = {
   MASCULINO: 'Masculino',
@@ -390,7 +391,7 @@ export function CandidatosTable({
                   />
                 </TableCell>
                 <TableCell className="font-medium text-neutral-600">
-                  {new Date(c.created_at).toLocaleDateString()}
+                  {formatearFechaAdmin(c.created_at)}
                 </TableCell>
                 <TableCell>
                   <div className="font-medium text-humania-blue">{c.nombres} {c.apellidos}</div>
@@ -466,7 +467,7 @@ export function CandidatosTable({
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-humania-gray pl-6">
               <span>{c.tipo_perfil}</span>
               {c.ciudades_operacion?.nombre_oficial && <span>{c.ciudades_operacion.nombre_oficial}</span>}
-              <span>{new Date(c.created_at).toLocaleDateString()}</span>
+              <span>{formatearFechaAdmin(c.created_at)}</span>
             </div>
             <div className="pl-6">
               <Link href={hrefDetalle(c.id)} className="text-sm font-bold text-humania-blue hover:underline">

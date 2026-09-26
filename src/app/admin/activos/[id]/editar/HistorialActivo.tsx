@@ -1,3 +1,5 @@
+import { formatearFechaAdmin } from '@/lib/format'
+
 type RegistroHistorial = {
   id: string
   fecha_asignacion: string
@@ -13,8 +15,7 @@ const RESULTADO_ESTILO: Record<string, string> = {
 }
 
 function formatearFecha(fecha: string | null) {
-  if (!fecha) return null
-  return new Date(fecha).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })
+  return formatearFechaAdmin(fecha)
 }
 
 export function HistorialActivo({ historial }: { historial: RegistroHistorial[] }) {

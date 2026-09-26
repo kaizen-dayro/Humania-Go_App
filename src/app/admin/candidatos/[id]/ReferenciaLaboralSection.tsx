@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ReferenciaLaboralScore } from './ReferenciaLaboralScore'
 import { CollapsibleCard } from './CollapsibleCard'
 import { REFERENCIA_LABORAL_RELACION_OPTIONS } from '@/lib/domain/eligibility'
+import { formatearFechaAdmin } from '@/lib/format'
 
 export type ReferenciaLaboralRow = {
   id: string
@@ -166,7 +167,7 @@ export function ReferenciaLaboralSection({
             <Dato label="Cargo" value={initialData.contacto_cargo} />
             <Dato label="Relación" value={initialData.contacto_relacion} />
             <Dato label="Teléfono" value={initialData.contacto_telefono} />
-            <Dato label="Completada" value={initialData.completado_at ? new Date(initialData.completado_at).toLocaleString() : null} />
+            <Dato label="Completada" value={initialData.completado_at ? formatearFechaAdmin(initialData.completado_at) : null} />
           </div>
 
           <ReferenciaLaboralScore data={initialData} />
