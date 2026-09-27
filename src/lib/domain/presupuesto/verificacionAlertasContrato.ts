@@ -7,9 +7,16 @@
 
 import assert from 'node:assert/strict'
 import { abonoMinimoContrato, abonoMinimoExhaustivo, calcularAbonoMinimo, conAbono } from './abonoMinimo'
-import { construirAlertasOperacion, ingresoOperativoMensual, mesFinDelContrato, saldoCreditoAlMes } from './alertasOperacion'
+import {
+  construirAlertasOperacion,
+  entradasConductorAcumuladas,
+  mesFinDelContrato,
+  necesidadCajaMensual,
+  saldoCreditoAlMes,
+  salidasCajaAcumuladas,
+} from './alertasOperacion'
 import { ESCENARIOS_LINEA_BASE } from './lineaBase'
-import { calcularMetricas } from './metricas'
+import { calcularMetricas, calcularOtrosCostosHumania } from './metricas'
 import { PARAMETROS_REFERENCIA, validarParametros, type ParametrosPresupuesto } from './parametros'
 import { evaluarPolitica, POLITICA_FINANCIERA_V1 } from './politicaFinanciera'
 import { TEXTOS_APROBADOS as T, textoIncumplimiento } from './textosInterfaz'
@@ -82,25 +89,71 @@ verificar('referencia sin abono: una sola alerta (crédito fuera del contrato) c
   assert.equal(creditoPagadoAntes, null)
 })
 
-verificar('abono 56,4 %: el crédito termina en el mes 35 (cumple); caja −$7.691.456 y pago al banco $1.124.785 > ingreso $1.040.000', () => {
+// Decisión de Dayro (27-09): lo que paga el conductor (incluido el componente de adquisición) se puede usar para
+// pagar el banco. La alerta de caja compara, mes a mes y en acumulado, lo pagado con lo recibido del conductor.
+verificar('abono 56,4 %: el crédito termina en el mes 35 (cumple); lo que paga el conductor cubre cada mes: sin alertas', () => {
   const { r, alertas, creditoPagadoAntes } = alertasDe(conAbono(P, 0.564))
+  // La "vista de caja" del motor sigue negativa porque solo cuenta el ingreso operativo; ya no genera alerta.
   assert.equal(cop(r.flujoDeCajaNeto), '$-7.691.456')
-  assert.equal(cop(ingresoOperativoMensual(P)), '$1.040.000') // (450.000 − 90.000 − 120.000) × 52 ÷ 12
-  assert.deepEqual(alertas, [
-    'Al cierre del contrato la caja de la operación queda en $-7.691.456: lo pagado al banco y los costos superan el ingreso operativo de Humania. Esa diferencia debe cubrirse con recursos propios. El pago mensual al banco ($1.124.785) supera el ingreso operativo mensual de Humania ($1.040.000).',
-  ])
+  assert.deepEqual(alertas, [])
   assert.equal(creditoPagadoAntes, null, 'termina en el mes del fin del contrato: no es "antes"')
 })
 
-verificar('abono 100 %: pagado en el mes 26, 9 meses antes, ahorro $16.191.438; caja −$4.740.839 con pago $1.438.344', () => {
+verificar('abono 100 %: pagado en el mes 26, 9 meses antes, ahorro $16.191.438; sin alertas (1.438.344/mes < lo que paga el conductor)', () => {
   const { alertas, creditoPagadoAntes } = alertasDe(conAbono(P, 1))
   assert.equal(
     creditoPagadoAntes,
     'El crédito queda pagado en el mes 26, 9 meses antes de terminar el contrato: desde entonces no hay pago al banco. Ahorro en intereses por el abono: $16.191.438.',
   )
-  assert.deepEqual(alertas, [
-    'Al cierre del contrato la caja de la operación queda en $-4.740.839: lo pagado al banco y los costos superan el ingreso operativo de Humania. Esa diferencia debe cubrirse con recursos propios. El pago mensual al banco ($1.438.344) supera el ingreso operativo mensual de Humania ($1.040.000).',
+  assert.deepEqual(alertas, [])
+})
+
+const SEGURO_COTIZACION = { valorPoliza: 1_711_586, pagoInicial: 262_557, valorFinanciado: 1_454_848, numeroCuotas: 10, valorCuota: 155_839 }
+const conSeguroDigitado = (p: ParametrosPresupuesto): ParametrosPresupuesto => ({ ...p, seguro: { ...p.seguro, modo: 'DIGITADO', digitado: SEGURO_COTIZACION } })
+
+verificar('necesidad de caja, prueba de Dayro (seguro digitado, abono 350 %): meses 1-3 a mano y faltante de los meses 4 a 18, máximo $12.489.399', () => {
+  const p = conAbono(conSeguroDigitado(P), 3.5)
+  const r = calcularMetricas(p, 0)
+  // Mes 1: 4 semanas × 450.000 − (cuota 719.172 + cuota del seguro 155.839). Mes 2: 8 semanas. Mes 3: 13 semanas
+  // (13 = ⌊3 × 52 ÷ 12⌋) y desde este mes se paga cuota + 350 % de abono.
+  const cuota = r.amortizacionNormal!.cuotaMensual
+  const saldoMes = (m: number) => entradasConductorAcumuladas(p, r, m) - salidasCajaAcumuladas(p, r, m)
+  assert.ok(Math.abs(saldoMes(1) - (4 * 450_000 - (cuota + 155_839))) < 1e-6)
+  assert.ok(Math.abs(saldoMes(2) - (8 * 450_000 - 2 * (cuota + 155_839))) < 1e-6)
+  assert.ok(Math.abs(saldoMes(3) - (13 * 450_000 - 2 * (cuota + 155_839) - (cuota * 4.5 + 155_839))) < 1e-6)
+  assert.equal(cop(saldoMes(3)), '$707.866')
+  assert.deepEqual(necesidadCajaMensual(p, r) && { ...necesidadCajaMensual(p, r)!, maximo: cop(necesidadCajaMensual(p, r)!.maximo) }, { desde: 4, hasta: 18, maximo: '$12.489.399' })
+  assert.equal(cop(saldoMes(12)), '$-12.489.399', 'el mayor faltante es en el mes 12 (último pago al banco y renovaciones del año 1)')
+  assert.deepEqual(alertasDe(p).alertas, [
+    'Durante los meses 4 a 18 el pago al banco supera lo que paga el conductor: se necesitan hasta $12.489.399 de recursos propios en ese periodo.',
   ])
+})
+
+verificar('necesidad de caja, pruebas de Dayro: 240 % → meses 5 a 19 (máximo $8.446.058); 140 % → sin faltante', () => {
+  assert.deepEqual(alertasDe(conAbono(conSeguroDigitado(P), 2.4)).alertas, [
+    'Durante los meses 5 a 19 el pago al banco supera lo que paga el conductor: se necesitan hasta $8.446.058 de recursos propios en ese periodo.',
+  ])
+  assert.deepEqual(alertasDe(conAbono(conSeguroDigitado(P), 1.4)).alertas, [])
+  assert.equal(T.abonoMinimo.filaCajaAbonoMinimo, 'Flujo de caja neto — vista de caja (capital + interés) con el abono mínimo')
+  assert.equal(
+    T.alertasOperacion.necesidadCajaMensual(7, 7, '$100'),
+    'Durante el mes 7 el pago al banco supera lo que paga el conductor: se necesitan hasta $100 de recursos propios en ese periodo.',
+  )
+})
+
+verificar('las salidas de caja acumuladas al fin del contrato = costos de caja + recurrentes + otros del motor (50 combinaciones × 3 modos de seguro)', () => {
+  for (const e of ESCENARIOS_LINEA_BASE) {
+    for (const s of [0, 6]) {
+      for (const modo of ['LEGACY_NO_CONFIRMADO', 'DIGITADO', 'SIN_SEGURO'] as const) {
+        const base = e.parametros(P)
+        const p = { ...base, seguro: { ...base.seguro, modo, digitado: SEGURO_COTIZACION } }
+        const r = calcularMetricas(p, s)
+        const mes = mesFinDelContrato(p, r)
+        const motor = r.costosFinancierosCaja + r.costosRecurrentes.total + calcularOtrosCostosHumania(p, mes)
+        assert.ok(Math.abs(salidasCajaAcumuladas(p, r, mes) - motor) < 1e-6, `${e.id}|${s}|${modo}`)
+      }
+    }
+  }
 })
 
 verificar('crédito a 30 meses sin abono: mensaje positivo sin ahorro ("5 meses antes"); a 34 meses, "1 mes antes"', () => {
@@ -143,8 +196,8 @@ verificar('ningún abono lo logra (abono desde el mes 34): la alerta lo dice y D
 
 // ===== C. Coherencia con el motor, D8 y D6 =====
 
-verificar('las 4 alertas retiradas no aparecen nunca; la del crédito aparece si y solo si el crédito sobrevive al contrato (50 combinaciones)', () => {
-  const retiradas = [/ingreso operativo de Humania por sí solo/, /\(vista de rentabilidad\), la inversión no se recupera/, /\(vista de flujo de caja\), la inversión no se recupera/, /continúa pagándose/]
+verificar('las 5 alertas retiradas no aparecen nunca; la del crédito aparece si y solo si el crédito sobrevive al contrato (50 combinaciones)', () => {
+  const retiradas = [/ingreso operativo de Humania por sí solo/, /\(vista de rentabilidad\), la inversión no se recupera/, /\(vista de flujo de caja\), la inversión no se recupera/, /continúa pagándose/, /Al cierre del contrato la caja/]
   for (const e of ESCENARIOS_LINEA_BASE) {
     for (const s of [0, 6]) {
       const p = e.parametros(P)

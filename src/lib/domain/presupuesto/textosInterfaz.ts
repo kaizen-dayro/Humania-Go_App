@@ -42,6 +42,7 @@ export const TEXTOS_APROBADOS = {
     // KAI-42 (aprobado 2026-09-27): el abono mínimo cumple a la vez la política y el contrato.
     titulo: 'Abono mínimo requerido para cumplir la política y el contrato',
     yaCumple: 'La operación ya cumple la política y el contrato sin abono.',
+    filaCajaAbonoMinimo: 'Flujo de caja neto — vista de caja (capital + interés) con el abono mínimo',
     noAlcanzableContrato: (maximo: string) => `Ningún abono dentro del máximo de ${maximo} deja el crédito pagado antes de terminar el contrato.`,
     encontrado: (porcentaje: string, monto: string, mes: number) => `${porcentaje} de la cuota mensual (${monto}/mes) desde el mes ${mes}.`,
     noAlcanzableRoi: (maximo: string, minimo: string) => `Ningún abono dentro del máximo de ${maximo} alcanza el ROI mínimo de ${minimo}.`,
@@ -57,9 +58,9 @@ export const TEXTOS_APROBADOS = {
       `Se necesita un abono de al menos ${porcentaje} de la cuota (${monto}/mes) desde el mes ${mesInicio}, o un plazo de hasta ${mesContrato} meses.`,
     abonoNoAlcanza: (maximo: string, mesInicio: number, mesContrato: number) =>
       `Ningún abono dentro del máximo de ${maximo} lo logra desde el mes ${mesInicio}: reduce el plazo del crédito a ${mesContrato} meses o menos, o adelanta el mes de inicio del abono.`,
-    cajaNegativa: (monto: string) =>
-      `Al cierre del contrato la caja de la operación queda en ${monto}: lo pagado al banco y los costos superan el ingreso operativo de Humania. Esa diferencia debe cubrirse con recursos propios.`,
-    pagoMayorQueIngreso: (pago: string, ingreso: string) => `El pago mensual al banco (${pago}) supera el ingreso operativo mensual de Humania (${ingreso}).`,
+    // Aprobado 2026-09-27 (reemplaza a la alerta de caja negativa al cierre, que solo contaba el ingreso operativo).
+    necesidadCajaMensual: (desde: number, hasta: number, monto: string) =>
+      `${desde === hasta ? `Durante el mes ${desde}` : `Durante los meses ${desde} a ${hasta}`} el pago al banco supera lo que paga el conductor: se necesitan hasta ${monto} de recursos propios en ese periodo.`,
     perdida: (monto: string) => `La operación cierra el contrato con pérdida: el resultado neto (vista de rentabilidad) es ${monto}.`,
     creditoPagadoAntes: (mesCredito: number, mesesAntes: number) =>
       `El crédito queda pagado en el mes ${mesCredito}, ${mesesAntes} ${mesesAntes === 1 ? 'mes' : 'meses'} antes de terminar el contrato: desde entonces no hay pago al banco.`,
