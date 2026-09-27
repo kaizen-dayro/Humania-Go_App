@@ -182,8 +182,9 @@ verificar('Textos aprobados (spec.md 39.4.1): veredictos, razones, D6 y payback 
   assert.equal(T.paybackNoAlcanzadoReal, 'No se alcanza dentro del contrato')
   assert.equal(T.paybackNoAlcanzadoExtrapolado, 'No se alcanza en el horizonte simulado')
   assert.equal(T.equivalencia(87, '20,1'), 'Semana 87 (≈ 20,1 meses)')
-  assert.equal(T.origenAvisoM6, 'El cálculo usa la financiación del seguro del modelo anterior (Configuración › Financiación bancaria), sin soporte documental.')
-  assert.equal(`${T.seguroUsado.etiqueta}: ${T.seguroUsado.modeloAnterior}`, 'Seguro usado en el cálculo: modelo anterior, no confirmado')
+  // KAI-40 (aprobado 2026-09-26): "modelo anterior" pasa a "referencia histórica" en la interfaz.
+  assert.equal(T.origenAvisoM6, 'El cálculo usa la referencia histórica de la financiación del seguro, sin soporte documental. La cotización actual se muestra aparte y todavía no entra al cálculo.')
+  assert.equal(`${T.seguroUsado.etiqueta}: ${T.seguroUsado.modeloAnterior}`, 'Seguro usado en el cálculo: referencia histórica, no confirmada')
   assert.equal(`${T.seguroUsado.etiqueta}: ${T.seguroUsado.noIncluido}`, 'Seguro usado en el cálculo: no incluido')
   assert.equal(T.flujoContrato, 'Flujo del contrato')
   assert.deepEqual(T.grupos, { economiaActivo: 'Economía del activo', financiacionBancaria: 'Financiación bancaria', contratoConductor: 'Contrato con el conductor' })
