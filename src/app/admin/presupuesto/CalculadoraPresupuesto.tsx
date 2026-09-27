@@ -411,7 +411,8 @@ function TextoAbonoMinimo({ abono, parametros }: { abono: ResultadoAbonoMinimo; 
             <div>
               <Fila label="Meses ahorrados" valor={`${d.mesesAhorrados} meses`} />
               <Fila label="Ahorro en intereses" valor={cop(d.ahorroIntereses)} />
-              <Fila label="Flujo de caja neto — vista de caja (capital + interés)" valor={cop(d.flujoDeCajaNeto)} />
+              {/* Renombrada 2026-09-27: es la caja CON EL ABONO MÍNIMO, no con el abono simulado. */}
+              <Fila label={T.abonoMinimo.filaCajaAbonoMinimo} valor={cop(d.flujoDeCajaNeto)} />
             </div>
           </div>
         </div>
