@@ -183,7 +183,11 @@ verificar('Textos aprobados (spec.md 39.4.1): veredictos, razones, D6 y payback 
   assert.equal(T.paybackNoAlcanzadoExtrapolado, 'No se alcanza en el horizonte simulado')
   assert.equal(T.equivalencia(87, '20,1'), 'Semana 87 (≈ 20,1 meses)')
   // KAI-40 (aprobado 2026-09-26): "modelo anterior" pasa a "referencia histórica" en la interfaz.
-  assert.equal(T.origenAvisoM6, 'El cálculo usa la referencia histórica de la financiación del seguro, sin soporte documental. La cotización actual se muestra aparte y todavía no entra al cálculo.')
+  // Aviso M6: título y texto reemplazados con autorización de Humania Go (2026-09-27).
+  assert.equal(T.tituloAvisoM6, 'SEGURO CON VALORES HISTÓRICOS')
+  assert.equal(T.origenAvisoM6, 'Este resultado usa valores históricos del seguro, sin soporte documental. La cotización actual es informativa; ver "Seguro en esta simulación".')
+  // El aviso remite a la tarjeta por su título exacto: si uno cambia, el otro debe acompañarlo.
+  assert.ok(T.origenAvisoM6.includes(`"${T.seguroSimulacion.titulo}"`))
   assert.equal(`${T.seguroUsado.etiqueta}: ${T.seguroUsado.modeloAnterior}`, 'Seguro usado en el cálculo: referencia histórica, no confirmada')
   assert.equal(`${T.seguroUsado.etiqueta}: ${T.seguroUsado.noIncluido}`, 'Seguro usado en el cálculo: no incluido')
   assert.equal(T.flujoContrato, 'Flujo del contrato')

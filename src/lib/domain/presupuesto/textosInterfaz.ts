@@ -53,16 +53,72 @@ export const TEXTOS_APROBADOS = {
     etiqueta: 'Seguro usado en el cálculo',
     modeloAnterior: 'referencia histórica, no confirmada',
     noIncluido: 'no incluido',
+    // KAI-41 (textos propuestos y aprobados 2026-09-27, spec.md 41.4).
+    digitado: 'datos digitados, sin soporte documental',
+    sinSeguro: 'sin seguro',
   },
   modeloAnteriorTitulo: 'Referencia histórica del seguro (no confirmada)',
   modeloAnteriorNota:
     'Valores históricos sin soporte documental. Se conservan para reproducir el escenario de referencia y los presupuestos guardados; no corresponden a la cotización actual.',
   modeloAnteriorPlazo: 'Dato histórico, no confirmado; independiente del plazo del crédito.',
+  // Aviso M6 (spec.md 27.4). Título y texto reemplazados con autorización de Humania Go (2026-09-27, spec.md 40.5):
+  // antes "MODELO CON DATOS NO CONFIRMADOS", que sugería que todo el modelo estaba sin confirmar.
+  tituloAvisoM6: 'SEGURO CON VALORES HISTÓRICOS',
   origenAvisoM6:
-    'El cálculo usa la referencia histórica de la financiación del seguro, sin soporte documental. La cotización actual se muestra aparte y todavía no entra al cálculo.',
+    'Este resultado usa valores históricos del seguro, sin soporte documental. La cotización actual es informativa; ver "Seguro en esta simulación".',
   financiacionSeguroHistorica: 'Financiación del seguro (referencia histórica)',
   notaCostosSeguro: 'Incluye el costo financiero estimado del seguro (referencia histórica, no confirmado).',
   noConfirmado: 'No confirmado',
+  // ===== KAI-41 — seguro del activo por presupuesto (spec.md 41.4) =====
+  financiacionSeguroDigitada: 'Financiación del seguro (datos digitados)',
+  notaCostosSeguroDigitado: 'Incluye el costo de financiar el seguro digitado.',
+  renovacionesSeguro: 'Seguro (renovaciones adicionales)',
+  modalidadSinSeguro: {
+    CREDITO: 'El activo se financia con crédito bancario, sin seguro a cargo de Humania.',
+    RECURSOS_PROPIOS: 'El activo se paga de contado — vehículo y traspaso, sin seguro a cargo de Humania, sin financiación ni intereses.',
+  },
+  avisoSeguro: {
+    DIGITADO: {
+      titulo: 'SEGURO CON DATOS DIGITADOS',
+      texto: 'Este resultado usa los datos del seguro digitados en esta simulación, sin soporte documental. Verifícalos contra la póliza antes de aprobar la operación.',
+    },
+    SIN_SEGURO: {
+      titulo: 'SIN SEGURO',
+      texto: 'Este resultado no incluye seguro a cargo de Humania. Confirma que el riesgo del activo está cubierto antes de aprobar la operación.',
+    },
+  },
+  seguroActivo: {
+    titulo: 'Seguro del activo',
+    opciones: {
+      LEGACY_NO_CONFIRMADO: 'Referencia histórica',
+      DIGITADO: 'Digitar datos del seguro',
+      SIN_SEGURO: 'Sin seguro',
+    },
+    ayuda: {
+      LEGACY_NO_CONFIRMADO: 'Usa los valores históricos del seguro, sin soporte documental. Es la opción del escenario de referencia.',
+      DIGITADO: 'Digita los datos de la póliza de este activo. La póliza se renueva cada año con los mismos valores.',
+      SIN_SEGURO: 'Humania no paga seguro para este activo: no está asegurado o el seguro lo paga un tercero.',
+    },
+    sinModelar: 'Este presupuesto se guardó sin el seguro en el cálculo. Elige una opción para incluirlo.',
+    campos: {
+      valorPoliza: 'Valor anual de la póliza',
+      pagoInicial: 'Pago inicial',
+      valorFinanciado: 'Valor financiado',
+      numeroCuotas: 'Número de cuotas',
+      valorCuota: 'Valor de cada cuota',
+    },
+    ayudaCampos: {
+      valorPoliza: 'Precio total de la póliza por un año. Se paga de contado en Recursos propios y en las renovaciones que ocurren después de terminado el crédito.',
+      pagoInicial: 'Lo que se paga al contratar o renovar la póliza. Incluye el 4×1000 si aplica.',
+      valorFinanciado: 'Parte de la póliza que se paga en cuotas.',
+      numeroCuotas: 'Entre 1 y 12: la financiación termina antes de la siguiente renovación.',
+      valorCuota: 'Valor mensual de cada cuota.',
+    },
+    costoFinanciacion: (monto: string) => `Costo de la financiación por póliza: ${monto} (cuotas menos valor financiado).`,
+    soloPolizaRecursosPropios: 'En Recursos propios la póliza se paga de contado: solo se usa su valor anual.',
+    usarCotizacion: 'Usar los datos de la cotización actual',
+    cotizacionCargada: 'Se cargaron los datos de la cotización actual. Revísalos antes de guardar.',
+  },
   // Tarjeta "Seguro en esta simulación" (KAI-40): qué seguro usa el cálculo y qué es solo informativo.
   seguroSimulacion: {
     titulo: 'Seguro en esta simulación',
@@ -80,6 +136,23 @@ export const TEXTOS_APROBADOS = {
     notaCotizacion: 'Todavía no entra al cálculo: la tasa, el sistema de amortización y el saldo siguen pendientes de documento.',
     sinCotizacion: 'No hay una cotización del seguro cargada.',
     verDetalle: 'Ver el detalle en Amortización del crédito',
+    // KAI-41 (spec.md 41.4)
+    usadoDigitado: 'Usado en el cálculo: datos digitados',
+    usadoSinSeguro: 'Usado en el cálculo: sin seguro',
+    sinSoporte: 'Sin soporte documental',
+    pagoInicial: 'Pago inicial',
+    valorFinanciado: 'Valor financiado',
+    cuotas: 'Cuotas',
+    cuotasDe: (cuotas: number, valorCuota: string) => `${cuotas} ${cuotas === 1 ? 'cuota' : 'cuotas'} de ${valorCuota}`,
+    costoFinanciacion: 'Costo de la financiación por póliza',
+    valorPolizaContado: 'Valor anual de la póliza (de contado)',
+    renovacion: 'Renovación',
+    renovacionCada: (meses: number) => `Cada ${meses} meses, con los mismos valores`,
+    cuotasPendientes: 'Cuotas pendientes al terminar el crédito (no se cuentan como costo)',
+    notaDigitadoCredito:
+      'Si el crédito del vehículo termina antes, las cuotas pendientes del seguro dejan de contarse y las renovaciones siguientes se pagan de contado.',
+    notaDigitadoRecursosPropios: 'La póliza se paga de contado y se renueva cada año por el mismo valor.',
+    notaSinSeguroHumania: 'Este presupuesto no incluye seguro a cargo de Humania.',
   },
   flujoContrato: 'Flujo del contrato',
 } as const
@@ -164,6 +237,11 @@ export const ETIQUETAS_CAMPOS: Record<string, string> = {
   'seguro.legacy.principalFinanciacion': 'Principal financiación del seguro',
   'seguro.legacy.costoFinancieroEstimado': 'Costo financiero del seguro (estimado)',
   'seguro.legacy.plazoMeses': 'Plazo de la financiación del seguro',
+  'seguro.digitado.valorPoliza': 'Valor anual de la póliza',
+  'seguro.digitado.pagoInicial': 'Pago inicial del seguro',
+  'seguro.digitado.valorFinanciado': 'Valor financiado del seguro',
+  'seguro.digitado.numeroCuotas': 'Número de cuotas del seguro',
+  'seguro.digitado.valorCuota': 'Valor de cada cuota del seguro',
   precioCompra: 'Precio real de compra',
   traspaso: 'Traspaso',
   capitalPropioDeclarado: 'Recursos propios (capital) aportados por Humania',

@@ -27,6 +27,7 @@ export type OrigenDato =
   | 'MODELO_LEGACY' // valor histórico del modelo anterior
   | 'COTIZACION' // dato de la financiación vigente (dominio seguros)
   | 'SEGURO_NO_MODELADO' // el seguro no entra al modelo (modo SIN_MODELAR)
+  | 'SEGURO_DIGITADO' // dato de la póliza digitado en el presupuesto (modo DIGITADO, KAI-41)
 
 export interface DatoNoConfirmado {
   /** Dato del modelo del seguro (ruta dentro de `ParametrosPresupuesto.seguro`). */
@@ -70,6 +71,34 @@ const CAPITAL_SEGURO_RECURSOS_PROPIOS = [
   'paybackFinancieroCaja',
   'paybackFinancieroCajaExtrapolado',
 ]
+
+/**
+ * Seguro digitado (KAI-41): cualquiera de sus datos puede mover la inversión (pago inicial y financiado en
+ * Crédito, valor de la póliza en Recursos propios), los costos recurrentes (renovaciones), los costos
+ * financieros y todo lo que depende de ellos. Superconjunto verificado empíricamente en `verificacionSeguroDigitado.ts`.
+ */
+const SEGURO_DIGITADO = [
+  'inversionInicialTotal',
+  'principalFinanciacionSeguro',
+  'recursosPropios',
+  'costosFinancierosRentabilidad',
+  'costosFinancierosCaja',
+  'resultadoNeto',
+  'flujoDeCajaNeto',
+  'roiSobreInversionTotal',
+  'roiSobreRecursosPropios',
+  'paybackOperativo',
+  'paybackOperativoExtrapolado',
+  'paybackFlujoContractualCompleto',
+  'paybackFlujoContractualCompletoExtrapolado',
+  'paybackFinancieroRentabilidad',
+  'paybackFinancieroRentabilidadExtrapolado',
+  'paybackFinancieroCaja',
+  'paybackFinancieroCajaExtrapolado',
+]
+
+/** Datos digitados que intervienen según la modalidad: en Recursos propios solo el valor de la póliza. */
+const CAMPOS_DIGITADO_CREDITO = ['valorPoliza', 'pagoInicial', 'valorFinanciado', 'numeroCuotas', 'valorCuota'] as const
 
 const COSTO_SEGURO_CREDITO = [
   'costosFinancierosRentabilidad',
@@ -125,6 +154,21 @@ export function calcularDatosNoConfirmados(p: ParametrosPresupuesto): DatoNoConf
         indicadoresAfectados: COSTO_SEGURO_CREDITO,
       })
     }
+  } else if (modo === 'DIGITADO') {
+    // Datos digitados en el presupuesto: SÍ alimentan el cálculo y no tienen soporte documental, así que
+    // activan el aviso (con su propio texto). Nunca se promueven a otro estado.
+    for (const campo of esCredito ? CAMPOS_DIGITADO_CREDITO : (['valorPoliza'] as const)) {
+      datos.push({
+        campo: `seguro.digitado.${campo}`,
+        estado: 'REPORTADO_SIN_SOPORTE_DOCUMENTAL',
+        origen: 'SEGURO_DIGITADO',
+        integradoEnCalculo: true,
+        indicadoresAfectados: SEGURO_DIGITADO,
+      })
+    }
+  } else if (modo === 'SIN_SEGURO') {
+    // Decisión de negocio confirmada (Humania no paga seguro para este activo): no es un dato
+    // pendiente ni sin soporte, así que no se lista nada. La interfaz muestra su propio aviso.
   } else {
     // SIN_MODELAR: el seguro no entra a ningún indicador. Se deja constancia para que un resultado
     // sin seguro no se confunda con un resultado que incluye un seguro de costo cero.
