@@ -119,6 +119,7 @@ function ApplyParte2Form() {
 
     if (currentStep === 1) {
       if (formData.fiador_nombre.trim().length < 3) newErrors.fiador_nombre = "Nombre obligatorio."
+      else if (formData.fiador_nombre.trim().length > 60) newErrors.fiador_nombre = "Máximo 60 letras."
       if (formData.fiador_documento.length < 6 || formData.fiador_documento.length > 10) {
         newErrors.fiador_documento = "Debe tener entre 6 y 10 números."
       }

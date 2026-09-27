@@ -120,7 +120,7 @@ export const ReferenceSchema = z.object({
 export const GuarantorSchema = z.object({
   nombre_completo: z.string()
     .min(3, "Obligatorio")
-    .max(15, "Máximo 15 letras")
+    .max(60, "Máximo 60 letras")
     .regex(LettersOnly, "Solo se permiten letras"),
   numero_documento: z.string()
     .min(6, "Mínimo 6 números")
