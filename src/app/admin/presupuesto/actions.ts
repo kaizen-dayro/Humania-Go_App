@@ -11,6 +11,7 @@ import { createClient } from '@/utils/supabase/server'
 import { calcularMetricas } from '@/lib/domain/presupuesto/metricas'
 import type { ResultadoGuardado } from '@/lib/domain/presupuesto/compararHistorico'
 import { calcularAbonoMinimo } from '@/lib/domain/presupuesto/abonoMinimo'
+import { calcularGananciaCaja } from '@/lib/domain/presupuesto/gananciaCaja'
 import { clavesDesconocidas } from '@/lib/domain/presupuesto/esquemaSnapshot'
 import { validarParametros, type ParametrosPresupuesto } from '@/lib/domain/presupuesto/parametros'
 import {
@@ -136,7 +137,10 @@ export async function guardarPresupuesto(
   // como el resultado que vio el usuario; nunca participan en la reconstrucción de `parametros`.
   const evaluacionPolitica = evaluarPolitica(resultados, politica)
   const abonoMinimo = calcularAbonoMinimo(parametros, semanasAplazatoriasUsadas, politica)
-  const resultadosParaGuardar = { ...resultadosSinSeries, flujo: flujoSinSeries, evaluacionPolitica, abonoMinimo }
+  // KAI-43: la ganancia de caja del contrato también se recalcula aquí (nunca se toma del cliente) y se guarda
+  // con el presupuesto para mostrarla en la lista. No participa en la comparación histórico/actual.
+  const gananciaCaja = calcularGananciaCaja(parametros, resultados)
+  const resultadosParaGuardar = { ...resultadosSinSeries, flujo: flujoSinSeries, evaluacionPolitica, abonoMinimo, gananciaCaja }
 
   const { data, error } = await supabase
     .from('presupuestos_financieros')

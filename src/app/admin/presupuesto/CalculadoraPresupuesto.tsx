@@ -54,6 +54,7 @@ import {
   type ResultadoAbonoMinimo,
 } from '@/lib/domain/presupuesto/abonoMinimo'
 import { construirAlertasOperacion, mesFinDelContrato } from '@/lib/domain/presupuesto/alertasOperacion'
+import { calcularGananciaCaja, deCada100, type GananciaCaja, type ParteDeCada100 } from '@/lib/domain/presupuesto/gananciaCaja'
 import {
   abonoActivo,
   modeloGraficoFlujo,
@@ -431,6 +432,98 @@ function TextoAbonoMinimo({ abono, parametros }: { abono: ResultadoAbonoMinimo; 
     case 'ERROR_MONOTONIA':
       return <p className="text-sm text-red-800">{abono.detalle}</p>
   }
+}
+
+// ===== KAI-43 — Ganancia de caja del contrato (vista para decidir rápido) =====
+
+const millones = (v: number) =>
+  T.gananciaCaja.millones(`$${(Math.abs(v) / 1_000_000).toLocaleString('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`)
+const COLOR_PARTE: Record<ParteDeCada100, string> = {
+  banco: 'bg-neutral-600',
+  gastos: 'bg-neutral-400',
+  seguro: 'bg-neutral-300',
+  recursosPropios: 'bg-sky-300',
+  ganancia: 'bg-emerald-600',
+}
+const ORDEN_PARTES: ParteDeCada100[] = ['banco', 'gastos', 'seguro', 'recursosPropios', 'ganancia']
+
+function FilaDesglose({ label, valor, resta = true }: { label: string; valor: number; resta?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1.5 border-b border-neutral-100 text-sm">
+      <span className={resta ? 'text-humania-gray' : 'text-neutral-800'}>{label}</span>
+      <span className="font-mono tabular-nums text-right text-neutral-800">{resta ? `−${cop(valor)}` : cop(valor)}</span>
+    </div>
+  )
+}
+
+function TarjetaGananciaCaja({ g, conAbono }: { g: GananciaCaja; conAbono: boolean }) {
+  const G = T.gananciaCaja
+  const hayPerdida = g.ganancia < 0
+  const reparto = deCada100(g)
+  return (
+    <div data-bloque="ganancia-caja" data-ganancia={Math.round(g.ganancia)} className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-bold text-humania-blue uppercase tracking-wide">{hayPerdida ? G.tituloPerdida : G.titulo}</h3>
+          <p className={`text-3xl font-bold tabular-nums mt-1 ${hayPerdida ? 'text-red-700' : 'text-emerald-700'}`}>{millones(g.ganancia)}</p>
+          <p className="text-sm text-humania-gray/80 mt-1 max-w-xl">{G.explicacion}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <div className="rounded-md bg-neutral-50 px-3 py-2">
+            <p className="text-xs text-humania-gray/70">{G.porMes}</p>
+            <p className={`text-base font-semibold tabular-nums ${hayPerdida ? 'text-red-700' : 'text-neutral-800'}`}>{cop(g.gananciaPorMes)}</p>
+          </div>
+          {reparto && (
+            <div className="rounded-md bg-neutral-50 px-3 py-2">
+              <p className="text-xs text-humania-gray/70">{G.deCada100Corto}</p>
+              <p className="text-base font-semibold tabular-nums text-neutral-800">${reparto.ganancia}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {reparto && (
+        <div className="mt-5" data-reparto={ORDEN_PARTES.map((k) => reparto[k]).join(',')}>
+          <p className="text-xs text-humania-gray/70 mb-1.5">{G.deCada100Titulo}</p>
+          <div className="flex h-7 rounded-md overflow-hidden" aria-hidden="true">
+            {ORDEN_PARTES.filter((k) => reparto[k] > 0).map((k) => (
+              <div key={k} className={COLOR_PARTE[k]} style={{ width: `${reparto[k]}%` }} />
+            ))}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-2 text-xs text-humania-gray">
+            {ORDEN_PARTES.map((k) => (
+              <span key={k} className="flex items-center gap-1.5">
+                <span className={`inline-block w-2.5 h-2.5 rounded-sm ${COLOR_PARTE[k]}`} />
+                {G.partes[k]} <b className="font-semibold text-neutral-800">${reparto[k]}</b>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <details className="group mt-5 border-t border-neutral-100 pt-3">
+        <summary className="flex items-center gap-1.5 cursor-pointer list-none select-none text-sm font-semibold text-humania-blue">
+          <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
+          {G.verDesglose}
+        </summary>
+        <div className="mt-2">
+          <FilaDesglose label={G.filas.flujo} valor={g.flujoConductor} resta={false} />
+          {g.creditoCapital > 0 && <FilaDesglose label={G.filas.capital} valor={g.creditoCapital} />}
+          {g.creditoIntereses > 0 && <FilaDesglose label={conAbono ? G.filas.interesesConAbono : G.filas.intereses} valor={g.creditoIntereses} />}
+          <FilaDesglose label={G.filas.gastos} valor={g.gastosVehiculo} />
+          {g.seguro > 0 && <FilaDesglose label={G.filas.seguro} valor={g.seguro} />}
+          {g.otrosCostos > 0 && <FilaDesglose label={G.filas.otros} valor={g.otrosCostos} />}
+          <FilaDesglose label={G.filas.recursosPropios} valor={g.recursosPropios} />
+          <div className="flex items-baseline justify-between gap-4 pt-2 text-sm font-bold">
+            <span className="text-neutral-800">{hayPerdida ? G.tituloPerdida : G.titulo}</span>
+            <span className={`font-mono tabular-nums ${hayPerdida ? 'text-red-700' : 'text-emerald-700'}`}>{cop(g.ganancia)}</span>
+          </div>
+          {g.saldoCreditoPendiente > 0 && <p className="text-xs text-amber-900 mt-3">{G.notaSaldo(cop(g.saldoCreditoPendiente))}</p>}
+          {g.diferenciaConResultadoNeto > 0 && <p className="text-xs text-humania-gray/70 mt-2">{G.notaDiferencia(cop(g.diferenciaConResultadoNeto))}</p>}
+        </div>
+      </details>
+    </div>
+  )
 }
 
 function DecisionOperacion({
@@ -824,7 +917,8 @@ interface PresupuestoGuardado {
   financial_model_version: string
   etiqueta: string | null
   semanas_aplazatorias_usadas: number
-  resultados: ResultadoMetricas & { evaluacionPolitica?: EvaluacionPolitica }
+  /** `gananciaCaja` solo existe en presupuestos guardados desde KAI-43. */
+  resultados: ResultadoMetricas & { evaluacionPolitica?: EvaluacionPolitica; gananciaCaja?: GananciaCaja }
   created_at: string
 }
 
@@ -926,6 +1020,8 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
     [resultado, parametros, semanasAplazatoriasUsadas],
   )
   const mesContrato = resultado ? mesFinDelContrato(parametros, resultado) : 0
+  // KAI-43: ganancia de caja del contrato (solo presentación; el servidor la recalcula al guardar).
+  const gananciaCaja = useMemo(() => (resultado ? calcularGananciaCaja(parametros, resultado) : null), [resultado, parametros])
   const porcentajeAbonoMinimo =
     abonoMinimo?.estado === 'ENCONTRADO' || abonoMinimo?.estado === 'YA_CUMPLE_SIN_ABONO' ? abonoMinimo.detalle.porcentaje : null
   const puntosSensibilidad = useMemo(
@@ -1338,6 +1434,7 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
           )}
 
           <ResumenEjecutivo resultado={resultado} parametros={parametros} evaluacion={evaluacion} />
+          {gananciaCaja && <TarjetaGananciaCaja g={gananciaCaja} conAbono={!!resultado.amortizacionConAbono} />}
           <DecisionOperacion
             evaluacion={evaluacion}
             abonoMinimo={abonoMinimo}
@@ -1781,6 +1878,7 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                     <th className="py-2 font-medium">Etiqueta</th>
                     <th className="py-2 font-medium">Resultado neto</th>
                     <th className="py-2 font-medium">ROI inversión total</th>
+                    <th className="py-2 font-medium">{T.gananciaCaja.columnaLista}</th>
                     <th className="py-2 font-medium">{TN.columnaVeredicto}</th>
                     <th className="py-2 font-medium">Modelo</th>
                   </tr>
@@ -1803,6 +1901,7 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                         <td className="py-2.5">{g.etiqueta || '—'}</td>
                         <td className="py-2.5 font-mono tabular-nums">{cop(g.resultados.resultadoNeto)}</td>
                         <td className="py-2.5 font-mono tabular-nums">{pct(g.resultados.roiSobreInversionTotal)}</td>
+                        <td className="py-2.5 font-mono tabular-nums">{g.resultados.gananciaCaja ? cop(g.resultados.gananciaCaja.ganancia) : '—'}</td>
                         <td className="py-2.5 text-xs font-semibold">{veredictoGuardado ? T.veredictos[veredictoGuardado] : '—'}</td>
                         <td className="py-2.5 text-xs text-humania-gray/60">{g.financial_model_version}</td>
                       </tr>
