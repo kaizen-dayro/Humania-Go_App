@@ -47,14 +47,40 @@ export const TEXTOS_APROBADOS = {
   paybackNoAlcanzadoReal: 'No se alcanza dentro del contrato',
   paybackNoAlcanzadoExtrapolado: 'No se alcanza en el horizonte simulado',
   equivalencia: (semana: number, meses: string) => `Semana ${semana} (≈ ${meses} meses)`,
+  // KAI-40 (aprobado 2026-09-26): en la interfaz, "modelo anterior" pasa a "referencia histórica".
+  // Las claves internas (`modeloAnterior…`, `LEGACY_NO_CONFIRMADO`) no cambian: solo el texto visible.
   seguroUsado: {
     etiqueta: 'Seguro usado en el cálculo',
-    modeloAnterior: 'modelo anterior, no confirmado',
+    modeloAnterior: 'referencia histórica, no confirmada',
     noIncluido: 'no incluido',
   },
-  modeloAnteriorTitulo: 'Modelo anterior del seguro (no confirmado)',
-  modeloAnteriorPlazo: 'Dato del modelo anterior, no confirmado; independiente del plazo del crédito.',
-  origenAvisoM6: 'El cálculo usa la financiación del seguro del modelo anterior (Configuración › Financiación bancaria), sin soporte documental.',
+  modeloAnteriorTitulo: 'Referencia histórica del seguro (no confirmada)',
+  modeloAnteriorNota:
+    'Valores históricos sin soporte documental. Se conservan para reproducir el escenario de referencia y los presupuestos guardados; no corresponden a la cotización actual.',
+  modeloAnteriorPlazo: 'Dato histórico, no confirmado; independiente del plazo del crédito.',
+  origenAvisoM6:
+    'El cálculo usa la referencia histórica de la financiación del seguro, sin soporte documental. La cotización actual se muestra aparte y todavía no entra al cálculo.',
+  financiacionSeguroHistorica: 'Financiación del seguro (referencia histórica)',
+  notaCostosSeguro: 'Incluye el costo financiero estimado del seguro (referencia histórica, no confirmado).',
+  noConfirmado: 'No confirmado',
+  // Tarjeta "Seguro en esta simulación" (KAI-40): qué seguro usa el cálculo y qué es solo informativo.
+  seguroSimulacion: {
+    titulo: 'Seguro en esta simulación',
+    subtitulo: 'Qué datos del seguro usa este resultado y cuáles son solo informativos.',
+    usadoHistorico: 'Usado en el cálculo: referencia histórica',
+    usadoNinguno: 'Usado en el cálculo: ninguno',
+    sinSeguro: 'El seguro no entra en este resultado.',
+    capitalFinanciado: 'Capital financiado del seguro',
+    costoFinancieroEstimado: 'Costo financiero estimado',
+    plazo: 'Plazo',
+    plazoMeses: (meses: number) => `${meses} meses`,
+    capitalEnInversion: 'Capital del seguro incluido en la inversión',
+    notaHistorico: 'Valores de una referencia histórica sin soporte documental. Se conservan para reproducir el escenario de referencia y los presupuestos guardados.',
+    cotizacion: 'Cotización actual: informativa',
+    notaCotizacion: 'Todavía no entra al cálculo: la tasa, el sistema de amortización y el saldo siguen pendientes de documento.',
+    sinCotizacion: 'No hay una cotización del seguro cargada.',
+    verDetalle: 'Ver el detalle en Amortización del crédito',
+  },
   flujoContrato: 'Flujo del contrato',
 } as const
 

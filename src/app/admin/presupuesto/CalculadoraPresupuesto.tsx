@@ -12,9 +12,11 @@
 // Layout de cierre (spec.md 39.4, aprobado 2026-09-25), en tres zonas:
 // 1. Ejecutiva: contexto y avisos, modalidad, resumen, decisión (D8 + D6),
 //    estado de la operación y alertas.
-// 2. Análisis: flujo contractual (D7-1), estructura de capital y flujo del
-//    contrato, costos, paybacks, amortización (saldo D7-2, sensibilidad D7-3
-//    y financiación del seguro de la cotización).
+// 2. Análisis: flujo contractual (D7-1), "Seguro en esta simulación" (KAI-40:
+//    referencia histórica usada en el cálculo vs. cotización actual informativa),
+//    estructura de capital y flujo del contrato, costos, paybacks, amortización
+//    (saldo D7-2, sensibilidad D7-3 y detalle de la financiación del seguro de la
+//    cotización).
 // 3. Configuración: parámetros (incluido el abono y la política D8), guardar
 //    y presupuestos guardados.
 //
@@ -55,6 +57,7 @@ import {
   type ModeloGraficoSaldo,
   type PuntoSensibilidad,
 } from '@/lib/domain/presupuesto/vistasGraficos'
+import { construirVistaSeguroSimulacion, type VistaSeguroSimulacion } from '@/lib/domain/presupuesto/vistaSeguroSimulacion'
 import {
   TEXTOS_APROBADOS as T,
   TEXTOS_CLASIFICACION_PAYBACK,
@@ -160,12 +163,73 @@ function BloqueFinanciacionSeguro({ vista }: { vista: VistaCotizacionSeguro }) {
   )
 }
 
+/** Etiqueta pequeña y neutra del estado de un dato ("No confirmado", "Confirmado por cotización"…). */
+function EtiquetaEstado({ texto }: { texto: string }) {
+  return <span className="text-[11px] rounded-sm border border-neutral-300 bg-neutral-50 px-1.5 py-0.5 text-humania-gray/80 whitespace-nowrap">{texto}</span>
+}
+
+const ID_AMORTIZACION_CREDITO = 'amortizacion-credito'
+
+/**
+ * Tarjeta "Seguro en esta simulación" (KAI-40). Responde de un vistazo qué seguro usa el cálculo (izquierda)
+ * y qué dice la cotización actual, que es solo informativa (derecha). Solo presenta: los datos vienen de
+ * `construirVistaSeguroSimulacion`, que no calcula nada. La cotización muestra el estado de CADA dato; no hay
+ * una etiqueta global de "confirmado", porque la financiación sigue pendiente de documento.
+ */
+function TarjetaSeguroSimulacion({ vista }: { vista: VistaSeguroSimulacion }) {
+  const abrirDetalle = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const detalle = document.getElementById(ID_AMORTIZACION_CREDITO)
+    if (!(detalle instanceof HTMLDetailsElement)) return
+    e.preventDefault()
+    detalle.open = true
+    detalle.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  return (
+    <div data-bloque="seguro-simulacion" className="bg-white border border-neutral-200 rounded-lg shadow-sm p-6">
+      <h3 className="text-sm font-bold text-humania-blue uppercase tracking-wide">{vista.titulo}</h3>
+      <p className="text-xs text-humania-gray/70 mt-1 mb-5">{vista.subtitulo}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <section data-seguro-columna="usado" className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h4 className="text-xs font-bold text-humania-gray uppercase tracking-wide">{vista.usado.titulo}</h4>
+            {vista.usado.etiqueta && <EtiquetaEstado texto={vista.usado.etiqueta} />}
+          </div>
+          {vista.usado.filas.map((f) => (
+            <Fila key={f.etiqueta} label={f.etiqueta} valor={f.tipo === 'moneda' ? cop(f.valor as number) : String(f.valor)} />
+          ))}
+          <p className="text-xs text-humania-gray/70 mt-3">{vista.usado.nota}</p>
+        </section>
+        <section data-seguro-columna="cotizacion" className="min-w-0 md:border-l md:border-neutral-100 md:pl-6">
+          <h4 className="text-xs font-bold text-humania-gray uppercase tracking-wide mb-2">{vista.cotizacion.titulo}</h4>
+          {vista.cotizacion.filas.map((f) => (
+            <div key={f.etiqueta} className="flex items-baseline justify-between gap-4 py-2 border-b border-neutral-100 last:border-0">
+              <span className="text-sm text-humania-gray">{f.etiqueta}</span>
+              <span className="flex flex-wrap items-baseline justify-end gap-x-3 gap-y-0.5 text-right">
+                <span className="text-sm font-mono tabular-nums font-medium text-neutral-800">{f.tipo === 'moneda' ? cop(f.valor as number) : String(f.valor)}</span>
+                {f.estado && <EtiquetaEstado texto={f.estado} />}
+              </span>
+            </div>
+          ))}
+          <p className="text-xs text-humania-gray/70 mt-3">{vista.cotizacion.nota}</p>
+          {vista.cotizacion.enlaceDetalle && (
+            <a href={`#${ID_AMORTIZACION_CREDITO}`} onClick={abrirDetalle} className="inline-block mt-3 text-xs font-medium text-humania-blue underline underline-offset-2 hover:text-humania-blue/80">
+              {vista.cotizacion.enlaceDetalle}
+            </a>
+          )}
+        </section>
+      </div>
+    </div>
+  )
+}
+
 function Colapsable({
+  id,
   titulo,
   subtitulo,
   abiertoInicial = false,
   children,
 }: {
+  id?: string
   titulo: string
   subtitulo?: string
   /** Abierto al montar; después el usuario lo abre o cierra libremente (el estado lo lleva el navegador). */
@@ -173,7 +237,7 @@ function Colapsable({
   children: React.ReactNode
 }) {
   return (
-    <details className="bg-white border border-neutral-200 rounded-lg shadow-sm group" open={abiertoInicial}>
+    <details id={id} className="bg-white border border-neutral-200 rounded-lg shadow-sm group scroll-mt-4" open={abiertoInicial}>
       <summary className="flex items-center justify-between gap-4 px-6 py-4 cursor-pointer list-none select-none">
         <div>
           <h3 className="text-sm font-bold text-humania-blue uppercase tracking-wide">{titulo}</h3>
@@ -187,11 +251,14 @@ function Colapsable({
 }
 
 /** Versión liviana de `Colapsable`, sin tarjeta propia — para anidar tablas largas (ej. amortización) dentro de una sección ya colapsable. */
-function SubColapsable({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function SubColapsable({ titulo, etiqueta, children }: { titulo: string; etiqueta?: string; children: React.ReactNode }) {
   return (
     <details className="group border border-neutral-200 rounded-md">
       <summary className="flex items-center justify-between gap-3 px-3 py-2.5 cursor-pointer list-none select-none">
-        <h4 className="text-xs font-bold text-humania-gray/50 uppercase tracking-wide">{titulo}</h4>
+        <span className="flex flex-wrap items-center gap-2">
+          <h4 className="text-xs font-bold text-humania-gray/50 uppercase tracking-wide">{titulo}</h4>
+          {etiqueta && <EtiquetaEstado texto={etiqueta} />}
+        </span>
         <ChevronDown className="w-4 h-4 text-humania-gray/50 shrink-0 transition-transform group-open:rotate-180" />
       </summary>
       <div className="px-3 pb-3 pt-1 border-t border-neutral-100">{children}</div>
@@ -844,6 +911,13 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
     () => (resultado ? construirVistaCotizacionSeguro(parametros.seguro.cotizacion, resultado.seguroNominal) : null),
     [resultado, parametros.seguro.cotizacion],
   )
+  // "Amortización del crédito" (y con ella el detalle de la cotización) solo se muestra en Crédito bancario.
+  const hayDetalleAmortizacion = parametros.modalidadAdquisicion === 'CREDITO' && !!resultado?.amortizacionNormal
+  // Tarjeta "Seguro en esta simulación" (KAI-40): solo presentación, no entra a ningún indicador.
+  const vistaSeguro = useMemo(
+    () => (resultado ? construirVistaSeguroSimulacion(parametros, vistaCotizacion, hayDetalleAmortizacion) : null),
+    [resultado, parametros, vistaCotizacion, hayDetalleAmortizacion],
+  )
 
   // KAI-29 B3 — ¿la simulación actual difiere de lo último guardado/cargado? Incluye la política D8.
   const hayCambiosSinGuardar = useMemo(
@@ -974,34 +1048,34 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
   const seguroEnCalculo = parametros.seguro.modo === 'LEGACY_NO_CONFIRMADO'
   const operativoSemanal = cop(flujoOperativoHumaniaSemanal(parametros))
 
-  // Recuadro del modelo anterior del seguro: en Recursos propios solo el capital entra al cálculo
-  // (pagado de contado), así que solo ese campo se muestra ahí (spec.md 39.4).
+  // Referencia histórica del seguro (modo LEGACY_NO_CONFIRMADO): en Recursos propios solo el capital entra al
+  // cálculo (pagado de contado), así que solo ese campo se muestra ahí (spec.md 39.4). Desde KAI-40 es un bloque
+  // neutro y cerrado por defecto; sigue editable porque hace falta para reproducir presupuestos guardados.
   const bloqueModeloAnteriorSeguro = (
-    <div data-bloque="seguro-legacy" className="mt-6 rounded-md border border-amber-300 bg-amber-50/60 p-4">
-      <h5 className="text-xs font-bold text-amber-900 uppercase tracking-wide">{T.modeloAnteriorTitulo}</h5>
-      <p className="text-xs text-amber-900/80 mt-1 mb-4">
-        Estos valores no representan la cotización actualmente cargada ni deben confundirse con la financiación del seguro de la cotización. Solo se conservan para reproducir el modelo anterior y los presupuestos históricos.
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        <CampoNumero label="Principal financiación del seguro" valor={parametros.seguro.legacy.principalFinanciacion} onChange={setSeguroLegacy('principalFinanciacion')} />
-        {parametros.modalidadAdquisicion === 'CREDITO' && (
-          <>
-            <CampoNumero
-              label="Costo financiero del seguro (estimado)"
-              descripcion="Supuesto lineal, no un cronograma bancario confirmado."
-              valor={parametros.seguro.legacy.costoFinancieroEstimado}
-              onChange={setSeguroLegacy('costoFinancieroEstimado')}
-            />
-            <CampoNumero
-              label="Plazo de la financiación del seguro"
-              suffix="meses"
-              descripcion={T.modeloAnteriorPlazo}
-              valor={parametros.seguro.legacy.plazoMeses}
-              onChange={setSeguroLegacy('plazoMeses')}
-            />
-          </>
-        )}
-      </div>
+    <div data-bloque="seguro-legacy" className="mt-6">
+      <SubColapsable titulo={T.modeloAnteriorTitulo} etiqueta={T.noConfirmado}>
+        <p className="text-xs text-humania-gray/70 mt-2 mb-4">{T.modeloAnteriorNota}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <CampoNumero label="Principal financiación del seguro" valor={parametros.seguro.legacy.principalFinanciacion} onChange={setSeguroLegacy('principalFinanciacion')} />
+          {parametros.modalidadAdquisicion === 'CREDITO' && (
+            <>
+              <CampoNumero
+                label="Costo financiero del seguro (estimado)"
+                descripcion="Supuesto lineal, no un cronograma bancario confirmado."
+                valor={parametros.seguro.legacy.costoFinancieroEstimado}
+                onChange={setSeguroLegacy('costoFinancieroEstimado')}
+              />
+              <CampoNumero
+                label="Plazo de la financiación del seguro"
+                suffix="meses"
+                descripcion={T.modeloAnteriorPlazo}
+                valor={parametros.seguro.legacy.plazoMeses}
+                onChange={setSeguroLegacy('plazoMeses')}
+              />
+            </>
+          )}
+        </div>
+      </SubColapsable>
     </div>
   )
 
@@ -1110,13 +1184,18 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
               </Tarjeta>
             )}
 
+            {vistaSeguro && <TarjetaSeguroSimulacion vista={vistaSeguro} />}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Tarjeta titulo="Estructura de capital">
                 <Fila label="Modalidad de adquisición" valor={parametros.modalidadAdquisicion === 'CREDITO' ? 'Crédito bancario' : 'Recursos propios (de contado)'} />
                 <Fila label="Costo / inversión inicial" valor={cop(resultado.inversionInicialTotal)} destacado />
                 <Fila label="Recursos propios de Humania" valor={cop(resultado.recursosPropios)} />
                 <Fila label="Financiación bancaria" valor={cop(resultado.financiacionBancaria)} />
-                <Fila label="Financiación del seguro" valor={cop(resultado.principalFinanciacionSeguro)} />
+                <Fila
+                  label={seguroEnCalculo && parametros.modalidadAdquisicion === 'CREDITO' ? T.financiacionSeguroHistorica : 'Financiación del seguro'}
+                  valor={cop(resultado.principalFinanciacionSeguro)}
+                />
                 <Fila label={T.seguroUsado.etiqueta} valor={seguroEnCalculo ? T.seguroUsado.modeloAnterior : T.seguroUsado.noIncluido} />
                 <Fila label="% financiado" valor={pct((resultado.financiacionBancaria + resultado.principalFinanciacionSeguro) / resultado.inversionInicialTotal)} />
                 <Fila label="% capital propio" valor={pct(resultado.recursosPropios / resultado.inversionInicialTotal)} />
@@ -1144,6 +1223,10 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                   <Fila label="Impuestos (renovaciones adicionales)" valor={cop(resultado.costosRecurrentes.impuestos.totalAdicional)} />
                 </div>
               </div>
+              {/* El costo financiero del seguro solo existe en Crédito bancario con la referencia histórica en el cálculo. */}
+              {seguroEnCalculo && parametros.modalidadAdquisicion === 'CREDITO' && (
+                <p className="text-xs text-humania-gray/70 mt-3">{T.notaCostosSeguro}</p>
+              )}
             </Tarjeta>
 
             <Tarjeta titulo="Análisis detallado — payback (real dentro del contrato vs. extrapolado)">
@@ -1187,8 +1270,9 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
               </div>
             </Tarjeta>
 
-            {parametros.modalidadAdquisicion === 'CREDITO' && resultado.amortizacionNormal && (
+            {hayDetalleAmortizacion && resultado.amortizacionNormal && (
               <Colapsable
+                id={ID_AMORTIZACION_CREDITO}
                 titulo="Amortización del crédito"
                 subtitulo="Tabla completa mes a mes — normal y con abono a capital. Con abono activo, los paybacks financieros de arriba ya usan este cronograma."
               >
