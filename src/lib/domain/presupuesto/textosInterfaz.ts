@@ -50,6 +50,33 @@ export const TEXTOS_APROBADOS = {
     soloCredito: 'Aplica solo a la modalidad Crédito bancario.',
   },
   alertas: 'Alertas',
+  // KAI-43 (aprobado 2026-09-27): tarjeta "Ganancia de caja del contrato" (spec.md 43).
+  gananciaCaja: {
+    titulo: 'Ganancia de caja del contrato',
+    tituloPerdida: 'Pérdida de caja del contrato',
+    explicacion:
+      'Lo que le queda a Humania al terminar el contrato, después de pagar el crédito, los gastos y el seguro, y de recuperar sus recursos propios.',
+    millones: (valor: string) => `${valor} millones`,
+    porMes: 'Por mes de contrato',
+    deCada100Corto: 'De cada $100 del conductor',
+    deCada100Titulo: 'De cada $100 que paga el conductor',
+    partes: { banco: 'Banco', gastos: 'SOAT y otros', seguro: 'Seguro', recursosPropios: 'Recursos propios', ganancia: 'Ganancia' },
+    verDesglose: 'Ver el desglose',
+    filas: {
+      flujo: 'Lo que paga el conductor en el contrato',
+      capital: '− Crédito: capital',
+      intereses: '− Crédito: intereses',
+      interesesConAbono: '− Crédito: intereses (con el abono)',
+      gastos: '− SOAT, tecnomecánica e impuestos (año 1 + renovaciones)',
+      seguro: '− Seguro (pago inicial + cuotas + renovaciones)',
+      otros: '− Otros costos de Humania',
+      recursosPropios: '− Recursos propios que Humania puso al comprar el activo',
+    },
+    notaDiferencia: (monto: string) =>
+      `Es ${monto} menor que el resultado neto: esa parte de la inversión inicial (traspaso, GPS, SOAT y seguro del año 1) no la paga el conductor.`,
+    notaSaldo: (saldo: string) => `Incluye ${saldo} de saldo del crédito que el contrato exige pagar antes de terminar.`,
+    columnaLista: 'Ganancia de caja',
+  },
   // KAI-42 (aprobado 2026-09-27): alertas que dependen del cálculo y mensaje positivo del crédito.
   alertasOperacion: {
     creditoFueraDelContrato: (mesCredito: number, mesContrato: number, saldo: string) =>
