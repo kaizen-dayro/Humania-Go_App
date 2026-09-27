@@ -28,8 +28,24 @@ const P = PARAMETROS_REFERENCIA
 const conRoiMinimo = (minimo: number): PoliticaFinanciera => ({ ...POLITICA_FINANCIERA_V1, roiCortes: [Math.min(0.2, minimo / 2), minimo, Math.max(0.6, minimo + 0.1)] })
 const conPaybackMaximo = (maximo: number): PoliticaFinanciera => ({ ...POLITICA_FINANCIERA_V1, paybackCortesSemanas: [Math.floor(maximo / 3), Math.floor((2 * maximo) / 3), maximo] })
 
-verificar('D6: escenario de referencia → YA_CUMPLE_SIN_ABONO (ROI 41,0 % ≥ 30 %, payback 87 ≤ 104)', () => {
+// KAI-42 (aprobado 2026-09-27): el abono mínimo también exige que el crédito quede pagado dentro del contrato.
+// La referencia (crédito a 72 meses, contrato de 35) cumple la política sin abono, pero el contrato exige 56,4 %.
+verificar('D6: escenario de referencia → ENCONTRADO 56,4 % por el contrato (sin abono cumple la política: ROI 41,0 %, payback 87)', () => {
   const r = calcularAbonoMinimo(P, 0, POLITICA_FINANCIERA_V1)
+  assert.equal(r.estado, 'ENCONTRADO')
+  if (r.estado !== 'ENCONTRADO') return
+  assert.equal(Math.round(r.detalle.porcentaje * 1000), 564)
+  assert.equal(r.detalle.mesesReales, 35)
+  assert.equal(r.detalle.payback, 87)
+  assert.ok(r.detalle.evaluacion.cumpleContrato && r.detalle.evaluacion.cumpleRoi)
+  // El paso anterior (56,3 %) sigue cumpliendo la política, pero el crédito termina en el mes 36: no cumple el contrato.
+  const anterior = calcularMetricas(conAbono(P, 0.563), 0)
+  assert.equal(anterior.mesesCreditoReales, 36)
+  assert.ok(anterior.creditoSobreviveAlContrato)
+})
+
+verificar('D6: crédito a 35 meses (pagado dentro del contrato) → YA_CUMPLE_SIN_ABONO', () => {
+  const r = calcularAbonoMinimo({ ...P, mesesCreditoVehiculo: 35 }, 0, POLITICA_FINANCIERA_V1)
   assert.equal(r.estado, 'YA_CUMPLE_SIN_ABONO')
   if (r.estado === 'YA_CUMPLE_SIN_ABONO') {
     assert.equal(r.detalle.porcentaje, 0)
@@ -38,16 +54,17 @@ verificar('D6: escenario de referencia → YA_CUMPLE_SIN_ABONO (ROI 41,0 % ≥ 3
   }
 })
 
-verificar('D6: ROI mínimo 50 % → ENCONTRADO, mínimo exacto de la grilla de 0,1 % (el valor inmediatamente inferior no cumple) (AC-48)', () => {
-  const politica = conRoiMinimo(0.5)
+// Con ROI mínimo del 60 % el ROI es la condición que decide (con el 56,4 % del contrato el ROI es 54,6 %).
+verificar('D6: ROI mínimo 60 % → ENCONTRADO, mínimo exacto de la grilla de 0,1 % (el valor inmediatamente inferior no cumple) (AC-48)', () => {
+  const politica = conRoiMinimo(0.6)
   const r = calcularAbonoMinimo(P, 0, politica)
   assert.equal(r.estado, 'ENCONTRADO')
   if (r.estado !== 'ENCONTRADO') return
   const d = r.detalle
   const paso = Math.round(d.porcentaje * 1000)
-  assert.ok(d.roi >= 0.5, 'el abono encontrado cumple')
+  assert.ok(d.roi >= 0.6, 'el abono encontrado cumple')
   const anterior = calcularMetricas(conAbono(P, (paso - 1) / 1000), 0)
-  assert.ok(anterior.roiSobreInversionTotal < 0.5, 'el paso anterior no cumple')
+  assert.ok(anterior.roiSobreInversionTotal < 0.6, 'el paso anterior no cumple')
   assert.ok(r.evaluaciones <= 16, `búsqueda binaria acotada (${r.evaluaciones} evaluaciones)`)
   // Detalle coherente con el motor en ese abono (no se recalcula por otro camino).
   const m = calcularMetricas(conAbono(P, d.porcentaje), 0)
