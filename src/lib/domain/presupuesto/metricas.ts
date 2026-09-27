@@ -19,6 +19,7 @@ import { calcularCronogramaSeguro, type ResultadoCronogramaSeguro } from '../seg
 import { calcularDatosNoConfirmados, type DatoNoConfirmado } from './datosNoConfirmados'
 import { calcularFlujoDeCaja, type FlujoContractual } from './flujoDeCaja'
 import { inversionInicial, margenVentaActivo, recursosPropiosEfectivos, seguroEfectivo, type ParametrosPresupuesto } from './parametros'
+import { costoFinancieroSeguroDigitado, renovacionesSeguroDigitado } from './seguroDigitado'
 
 export interface CostosRecurrentesConcepto {
   ocurrenciasAdicionales: number
@@ -29,11 +30,21 @@ export interface CostosRecurrentes {
   soat: CostosRecurrentesConcepto
   tecnomecanica: CostosRecurrentesConcepto
   impuestos: CostosRecurrentesConcepto
+  /**
+   * Renovaciones de la póliza del seguro digitado (KAI-41), igual que el SOAT: el año 1 está en la
+   * inversión. Solo existe en modo DIGITADO; en los demás modos la clave no aparece (el resultado de
+   * esos modos conserva exactamente su forma anterior).
+   */
+  seguro?: CostosRecurrentesConcepto
   total: number
 }
 
-/** D9 CERRADA: año 1 ya está en inversionInicial — solo se cuentan ocurrencias ADICIONALES (spec.md 19.16.3). */
-export function calcularCostosRecurrentes(p: ParametrosPresupuesto, mesEntero: number): CostosRecurrentes {
+/**
+ * D9 CERRADA: año 1 ya está en inversionInicial — solo se cuentan ocurrencias ADICIONALES (spec.md 19.16.3).
+ * `mesFinCredito` (mes en que termina el crédito del vehículo; null sin crédito) solo lo usa el seguro
+ * digitado, para saber si una renovación se financia o se paga de contado (spec.md 41).
+ */
+export function calcularCostosRecurrentes(p: ParametrosPresupuesto, mesEntero: number, mesFinCredito: number | null = null): CostosRecurrentes {
   const concepto = (monto: number, periodicidad: number): CostosRecurrentesConcepto => {
     const ocurrenciasAdicionales = Math.floor(mesEntero / periodicidad)
     return { ocurrenciasAdicionales, totalAdicional: ocurrenciasAdicionales * monto }
@@ -41,7 +52,12 @@ export function calcularCostosRecurrentes(p: ParametrosPresupuesto, mesEntero: n
   const soat = concepto(p.soatAnual, p.soatPeriodicidadMeses)
   const tecnomecanica = concepto(p.tecnomecanicaAnual, p.tecnomecanicaPeriodicidadMeses)
   const impuestos = concepto(p.impuestosAnuales, p.impuestosPeriodicidadMeses)
-  return { soat, tecnomecanica, impuestos, total: soat.totalAdicional + tecnomecanica.totalAdicional + impuestos.totalAdicional }
+  const total = soat.totalAdicional + tecnomecanica.totalAdicional + impuestos.totalAdicional
+  const digitado = p.seguro.modo === 'DIGITADO' ? p.seguro.digitado : undefined
+  if (!digitado) return { soat, tecnomecanica, impuestos, total }
+  const credito = p.modalidadAdquisicion === 'CREDITO' ? mesFinCredito : null
+  const seguro = renovacionesSeguroDigitado(digitado, p.mesesPorAno, mesEntero, credito)
+  return { soat, tecnomecanica, impuestos, seguro, total: total + seguro.totalAdicional }
 }
 
 /**
@@ -193,11 +209,22 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
     !esRecursosPropios && p.porcentajeAbonoCapital > 0
       ? amortizarCreditoConAbono(p.principalCreditoBancario, p.tasaEfectivaAnualCredito, p.mesesCreditoVehiculo, p.porcentajeAbonoCapital, p.mesInicioAbonoCapital)
       : null
-  // Sin seguro modelado (SIN_MODELAR) no hay costo ni cuota; el plazo 0 de ese modo nunca se usa como divisor.
+  // Solo el modelo anterior usa el costo lineal; en los demás modos (SIN_MODELAR, SIN_SEGURO, DIGITADO) no hay
+  // costo ni cuota por esta vía, y el plazo 0 de esos modos nunca se usa como divisor.
   const { costoFinancieroMensual: seguroCostoMensual, cuotaMensual: seguroCuotaMensual } =
-    esRecursosPropios || p.seguro.modo === 'SIN_MODELAR'
+    esRecursosPropios || p.seguro.modo !== 'LEGACY_NO_CONFIRMADO'
       ? { costoFinancieroMensual: 0, cuotaMensual: 0 }
       : estimarCostoSeguroLineal(seguro.principal, seguro.costoFinancieroTotal, seguro.plazoMeses)
+  // Seguro digitado (KAI-41, spec.md 41): su financiación solo existe en Crédito y se corta cuando termina el
+  // crédito del vehículo (27.5); por eso necesita el mes real de terminación (con abono, antes del plazo nominal).
+  const seguroDigitado = !esRecursosPropios && p.seguro.modo === 'DIGITADO' ? (p.seguro.digitado ?? null) : null
+  const mesFinCredito = esRecursosPropios ? null : amortizacionConAbono ? amortizacionConAbono.mesesReales : p.mesesCreditoVehiculo
+  const costoSeguroAlMes = (view: 'rentabilidad' | 'caja', mesEntero: number, mesesSeguro: number): number =>
+    seguroDigitado
+      ? costoFinancieroSeguroDigitado(seguroDigitado, p.mesesPorAno, mesEntero, mesFinCredito as number, view)
+      : view === 'rentabilidad'
+        ? seguroCostoMensual * mesesSeguro
+        : seguroCuotaMensual * mesesSeguro
 
   const mesAlFinDelContrato = flujo.duracionContratoSemanas / semanasPorMes
 
@@ -222,8 +249,8 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
       const mesEntero = Math.floor(mesExacto)
       const costoCredito = costoCreditoAlMes(view, mesExacto)
       const mesesSeguro = amortizacionCredito ? Math.min(mesEntero, seguro.plazoMeses) : 0
-      const costoSeguro = view === 'rentabilidad' ? seguroCostoMensual * mesesSeguro : seguroCuotaMensual * mesesSeguro
-      const recurrentes = calcularCostosRecurrentes(p, mesEntero).total + calcularOtrosCostosHumania(p, mesEntero)
+      const costoSeguro = costoSeguroAlMes(view, mesEntero, mesesSeguro)
+      const recurrentes = calcularCostosRecurrentes(p, mesEntero, mesFinCredito).total + calcularOtrosCostosHumania(p, mesEntero)
       serie.push(costoCredito + costoSeguro + recurrentes)
     }
     return serie
@@ -247,12 +274,13 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
   const paybackFinancieroCajaExtrapolado = primeraSemanaQueAlcanza(serieResultadoExtrapoladoCaja, inversion)
 
   const mesEnteroAlFinDelContrato = Math.floor(mesAlFinDelContrato)
-  const costosRecurrentes = calcularCostosRecurrentes(p, mesEnteroAlFinDelContrato)
+  const costosRecurrentes = calcularCostosRecurrentes(p, mesEnteroAlFinDelContrato, mesFinCredito)
   const otrosCostosAlFinDelContrato = calcularOtrosCostosHumania(p, mesEnteroAlFinDelContrato)
   // Mismo tope que la serie semanal: el seguro no genera cuotas más allá de su propio plazo.
   const mesesSeguroAlFinal = amortizacionCredito ? Math.min(mesEnteroAlFinDelContrato, seguro.plazoMeses) : 0
-  const costosFinancierosRentabilidad = costoCreditoAlMes('rentabilidad', mesAlFinDelContrato) + seguroCostoMensual * mesesSeguroAlFinal
-  const costosFinancierosCaja = costoCreditoAlMes('caja', mesAlFinDelContrato) + seguroCuotaMensual * mesesSeguroAlFinal
+  const costosFinancierosRentabilidad =
+    costoCreditoAlMes('rentabilidad', mesAlFinDelContrato) + costoSeguroAlMes('rentabilidad', mesEnteroAlFinDelContrato, mesesSeguroAlFinal)
+  const costosFinancierosCaja = costoCreditoAlMes('caja', mesAlFinDelContrato) + costoSeguroAlMes('caja', mesEnteroAlFinDelContrato, mesesSeguroAlFinal)
 
   const resultadoNeto =
     flujo.ingresoOperativoHumania - otrosCostosAlFinDelContrato - costosRecurrentes.total - costosFinancierosRentabilidad
@@ -270,7 +298,7 @@ export function calcularMetricas(p: ParametrosPresupuesto, semanasAplazatoriasUs
     recursosPropios,
     // "Financiado" — 0 en RECURSOS_PROPIOS (nada se financia, todo de contado).
     financiacionBancaria: esRecursosPropios ? 0 : p.principalCreditoBancario,
-    principalFinanciacionSeguro: esRecursosPropios ? 0 : seguro.principal,
+    principalFinanciacionSeguro: esRecursosPropios ? 0 : seguroDigitado ? seguroDigitado.valorFinanciado : seguro.principal,
     costosFinancierosRentabilidad,
     costosFinancierosCaja,
     costosRecurrentes,

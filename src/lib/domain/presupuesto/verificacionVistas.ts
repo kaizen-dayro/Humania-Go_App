@@ -232,6 +232,7 @@ verificar('KAI-40: textos aprobados literalmente y sin "legacy" ni "modelo anter
     T.modeloAnteriorTitulo,
     T.modeloAnteriorNota,
     T.modeloAnteriorPlazo,
+    T.tituloAvisoM6,
     T.origenAvisoM6,
     T.financiacionSeguroHistorica,
     T.notaCostosSeguro,

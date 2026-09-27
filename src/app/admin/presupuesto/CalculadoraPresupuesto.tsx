@@ -26,7 +26,7 @@
 // sin librerías (D7).
 
 import { useMemo, useState, useEffect, useCallback } from 'react'
-import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, XCircle } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, Info, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -76,9 +76,16 @@ import {
   flujoOperativoHumaniaSemanal,
   validarParametros,
   type ModalidadAdquisicion,
+  type ModoSeguro,
   type ParametrosPresupuesto,
   type SeguroLegacyParametros,
 } from '@/lib/domain/presupuesto/parametros'
+import {
+  SEGURO_DIGITADO_VACIO,
+  costoFinanciacionPorPoliza,
+  seguroDigitadoDesdeCotizacion,
+  type SeguroDigitadoParametros,
+} from '@/lib/domain/presupuesto/seguroDigitado'
 import { formatearFechaAdmin } from '@/lib/format'
 import { guardarPresupuesto, listarPresupuestos, obtenerPresupuesto, type ResultadoObtenerPresupuesto } from './actions'
 
@@ -195,7 +202,17 @@ function TarjetaSeguroSimulacion({ vista }: { vista: VistaSeguroSimulacion }) {
             {vista.usado.etiqueta && <EtiquetaEstado texto={vista.usado.etiqueta} />}
           </div>
           {vista.usado.filas.map((f) => (
-            <Fila key={f.etiqueta} label={f.etiqueta} valor={f.tipo === 'moneda' ? cop(f.valor as number) : String(f.valor)} />
+            <Fila
+              key={f.etiqueta}
+              label={f.etiqueta}
+              valor={
+                f.tipo === 'moneda'
+                  ? cop(f.valor as number)
+                  : f.tipo === 'cuotas'
+                    ? T.seguroSimulacion.cuotasDe(f.valor as number, cop(f.monto ?? 0))
+                    : String(f.valor)
+              }
+            />
           ))}
           <p className="text-xs text-humania-gray/70 mt-3">{vista.usado.nota}</p>
         </section>
@@ -880,6 +897,8 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
   const [baseline, setBaseline] = useState<EstadoSimulacion>(estadoInicial)
   const [cargandoApertura, setCargandoApertura] = useState<string | null>(null)
   const [confirmandoAperturaId, setConfirmandoAperturaId] = useState<string | null>(null)
+  // KAI-41: aviso "se cargaron los datos de la cotización actual" (se oculta al editar, abrir otro presupuesto o empezar de nuevo).
+  const [avisoPrecarga, setAvisoPrecarga] = useState(false)
 
   const errores = useMemo(() => validarParametros(parametros), [parametros])
   const erroresPolitica = useMemo(() => (politica ? validarPolitica(politica) : []), [politica])
@@ -915,7 +934,7 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
   const hayDetalleAmortizacion = parametros.modalidadAdquisicion === 'CREDITO' && !!resultado?.amortizacionNormal
   // Tarjeta "Seguro en esta simulación" (KAI-40): solo presentación, no entra a ningún indicador.
   const vistaSeguro = useMemo(
-    () => (resultado ? construirVistaSeguroSimulacion(parametros, vistaCotizacion, hayDetalleAmortizacion) : null),
+    () => (resultado ? construirVistaSeguroSimulacion(parametros, vistaCotizacion, hayDetalleAmortizacion, resultado.mesesCreditoReales) : null),
     [resultado, parametros, vistaCotizacion, hayDetalleAmortizacion],
   )
 
@@ -947,6 +966,7 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
     }
     // Reemplazo atómico completo — nunca `prev => ({...prev, ...})` (evita residuos A -> B -> A).
     setParametros(r.parametros)
+    setAvisoPrecarga(false)
     setSemanasAplazatoriasUsadas(r.semanasAplazatoriasUsadas)
     setPolitica(r.politicaFinanciera)
     setBaseline({ parametros: r.parametros, semanas: r.semanasAplazatoriasUsadas, politica: r.politicaFinanciera })
@@ -972,6 +992,7 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
   function handleNuevaSimulacion() {
     const nuevo = estadoInicial()
     setParametros(nuevo.parametros)
+    setAvisoPrecarga(false)
     setSemanasAplazatoriasUsadas(nuevo.semanas)
     setPolitica(nuevo.politica)
     setBaseline(nuevo)
@@ -989,6 +1010,31 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
     setParametros((prev) => conSeguroLegacy(prev, { [campo]: valor }))
 
   const setModalidad = (modalidad: ModalidadAdquisicion) => setParametros((prev) => ({ ...prev, modalidadAdquisicion: modalidad }))
+
+  // Seguro del activo (KAI-41). Cambiar de modo conserva los datos de los otros modos (volver a uno
+  // anterior recupera sus valores). La primera vez que se elige "Digitar datos del seguro", los campos se
+  // llenan con la cotización actual si existe (el usuario los revisa); si no, quedan en cero y la
+  // validación pide completarlos: nunca se inventan valores.
+  const setModoSeguro = (modo: ModoSeguro) => {
+    if (parametros.seguro.modo === modo) return
+    const necesitaDatos = modo === 'DIGITADO' && !parametros.seguro.digitado
+    const desdeCotizacion = necesitaDatos ? seguroDigitadoDesdeCotizacion(parametros.seguro.cotizacion) : null
+    setParametros((prev) => ({
+      ...prev,
+      seguro: { ...prev.seguro, modo, ...(necesitaDatos ? { digitado: desdeCotizacion ?? { ...SEGURO_DIGITADO_VACIO } } : {}) },
+    }))
+    setAvisoPrecarga(desdeCotizacion !== null)
+  }
+  const setSeguroDigitado = (campo: keyof SeguroDigitadoParametros) => (valor: number) => {
+    setParametros((prev) => ({ ...prev, seguro: { ...prev.seguro, digitado: { ...(prev.seguro.digitado ?? SEGURO_DIGITADO_VACIO), [campo]: valor } } }))
+    setAvisoPrecarga(false)
+  }
+  const cargarCotizacionEnDigitado = () => {
+    const desdeCotizacion = seguroDigitadoDesdeCotizacion(parametros.seguro.cotizacion)
+    if (!desdeCotizacion) return
+    setParametros((prev) => ({ ...prev, seguro: { ...prev.seguro, digitado: desdeCotizacion } }))
+    setAvisoPrecarga(true)
+  }
 
   const setCortePolitica = (tipo: 'roiCortes' | 'paybackCortesSemanas', indice: 0 | 1 | 2) => (valor: number) =>
     setPolitica((prev) => {
@@ -1045,14 +1091,36 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
     cargarGuardados()
   }
 
-  const seguroEnCalculo = parametros.seguro.modo === 'LEGACY_NO_CONFIRMADO'
+  const modoSeguro = parametros.seguro.modo
+  const esCredito = parametros.modalidadAdquisicion === 'CREDITO'
+  const seguroEnCalculo = modoSeguro === 'LEGACY_NO_CONFIRMADO'
+  const seguroDigitado = modoSeguro === 'DIGITADO' ? (parametros.seguro.digitado ?? null) : null
+  // Aviso persistente del seguro en la zona ejecutiva (M6 y KAI-41): un texto por modo. SIN_MODELAR no lo muestra.
+  const avisoSeguro =
+    modoSeguro === 'SIN_SEGURO'
+      ? T.avisoSeguro.SIN_SEGURO
+      : resultado && hayDatosNoConfirmadosEnCalculo(resultado.datosNoConfirmados)
+        ? modoSeguro === 'DIGITADO'
+          ? T.avisoSeguro.DIGITADO
+          : { titulo: T.tituloAvisoM6, texto: T.origenAvisoM6 }
+        : null
+  const etiquetaFinanciacionSeguro =
+    esCredito && seguroEnCalculo ? T.financiacionSeguroHistorica : esCredito && seguroDigitado ? T.financiacionSeguroDigitada : 'Financiación del seguro'
+  const seguroUsadoTexto = seguroEnCalculo
+    ? T.seguroUsado.modeloAnterior
+    : modoSeguro === 'DIGITADO'
+      ? T.seguroUsado.digitado
+      : modoSeguro === 'SIN_SEGURO'
+        ? T.seguroUsado.sinSeguro
+        : T.seguroUsado.noIncluido
+  const notaCostosSeguro = esCredito && seguroEnCalculo ? T.notaCostosSeguro : esCredito && seguroDigitado ? T.notaCostosSeguroDigitado : null
   const operativoSemanal = cop(flujoOperativoHumaniaSemanal(parametros))
 
   // Referencia histórica del seguro (modo LEGACY_NO_CONFIRMADO): en Recursos propios solo el capital entra al
   // cálculo (pagado de contado), así que solo ese campo se muestra ahí (spec.md 39.4). Desde KAI-40 es un bloque
   // neutro y cerrado por defecto; sigue editable porque hace falta para reproducir presupuestos guardados.
   const bloqueModeloAnteriorSeguro = (
-    <div data-bloque="seguro-legacy" className="mt-6">
+    <div data-bloque="seguro-legacy" className="mt-4">
       <SubColapsable titulo={T.modeloAnteriorTitulo} etiqueta={T.noConfirmado}>
         <p className="text-xs text-humania-gray/70 mt-2 mb-4">{T.modeloAnteriorNota}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -1076,6 +1144,86 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
           )}
         </div>
       </SubColapsable>
+    </div>
+  )
+
+  // Seguro del activo (KAI-41, spec.md 41): el usuario elige qué seguro entra al cálculo de este presupuesto.
+  // SIN_MODELAR no se ofrece (solo llega en presupuestos guardados antes); si viene así, se explica y se puede cambiar.
+  const MODOS_ELEGIBLES = ['LEGACY_NO_CONFIRMADO', 'DIGITADO', 'SIN_SEGURO'] as const
+  const bloqueSeguroActivo = (
+    <div data-grupo="seguro-activo" data-modo-seguro={modoSeguro}>
+      <TituloGrupo>{T.seguroActivo.titulo}</TituloGrupo>
+      <div className="flex flex-wrap gap-2">
+        {MODOS_ELEGIBLES.map((m) => (
+          <button
+            key={m}
+            type="button"
+            aria-pressed={modoSeguro === m}
+            onClick={() => setModoSeguro(m)}
+            className={`px-4 py-2 text-sm font-medium rounded-none border ${
+              modoSeguro === m ? 'bg-humania-blue text-white border-humania-blue' : 'bg-white text-humania-gray border-neutral-300 hover:border-humania-blue/40'
+            }`}
+          >
+            {T.seguroActivo.opciones[m]}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-humania-gray/60 mt-2">{modoSeguro === 'SIN_MODELAR' ? T.seguroActivo.sinModelar : T.seguroActivo.ayuda[modoSeguro]}</p>
+
+      {seguroEnCalculo && bloqueModeloAnteriorSeguro}
+
+      {seguroDigitado && (
+        <div data-bloque="seguro-digitado" className="mt-4 space-y-4">
+          {parametros.seguro.cotizacion && (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="outline" size="sm" onClick={cargarCotizacionEnDigitado} className="rounded-none">
+                {T.seguroActivo.usarCotizacion}
+              </Button>
+              {avisoPrecarga && <p className="text-xs text-humania-blue">{T.seguroActivo.cotizacionCargada}</p>}
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            <CampoNumero
+              label={T.seguroActivo.campos.valorPoliza}
+              descripcion={T.seguroActivo.ayudaCampos.valorPoliza}
+              valor={seguroDigitado.valorPoliza}
+              onChange={setSeguroDigitado('valorPoliza')}
+            />
+            {esCredito && (
+              <>
+                <CampoNumero
+                  label={T.seguroActivo.campos.pagoInicial}
+                  descripcion={T.seguroActivo.ayudaCampos.pagoInicial}
+                  valor={seguroDigitado.pagoInicial}
+                  onChange={setSeguroDigitado('pagoInicial')}
+                />
+                <CampoNumero
+                  label={T.seguroActivo.campos.valorFinanciado}
+                  descripcion={T.seguroActivo.ayudaCampos.valorFinanciado}
+                  valor={seguroDigitado.valorFinanciado}
+                  onChange={setSeguroDigitado('valorFinanciado')}
+                />
+                <CampoNumero
+                  label={T.seguroActivo.campos.numeroCuotas}
+                  descripcion={T.seguroActivo.ayudaCampos.numeroCuotas}
+                  suffix="cuotas"
+                  valor={seguroDigitado.numeroCuotas}
+                  onChange={setSeguroDigitado('numeroCuotas')}
+                />
+                <CampoNumero
+                  label={T.seguroActivo.campos.valorCuota}
+                  descripcion={T.seguroActivo.ayudaCampos.valorCuota}
+                  valor={seguroDigitado.valorCuota}
+                  onChange={setSeguroDigitado('valorCuota')}
+                />
+              </>
+            )}
+          </div>
+          <p className="text-xs text-humania-gray/60" data-costo-financiacion-seguro={esCredito ? costoFinanciacionPorPoliza(seguroDigitado) : undefined}>
+            {esCredito ? T.seguroActivo.costoFinanciacion(cop(costoFinanciacionPorPoliza(seguroDigitado))) : T.seguroActivo.soloPolizaRecursosPropios}
+          </p>
+        </div>
+      )}
     </div>
   )
 
@@ -1124,9 +1272,11 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
           ))}
         </div>
         <p className="text-xs text-humania-gray/60 mt-2">
-          {parametros.modalidadAdquisicion === 'CREDITO'
-            ? 'El activo se financia con crédito bancario + financiación del seguro.'
-            : 'El activo se paga de contado — vehículo, traspaso y seguro incluido, sin financiación ni intereses.'}
+          {modoSeguro === 'SIN_SEGURO'
+            ? T.modalidadSinSeguro[parametros.modalidadAdquisicion]
+            : parametros.modalidadAdquisicion === 'CREDITO'
+              ? 'El activo se financia con crédito bancario + financiación del seguro.'
+              : 'El activo se paga de contado — vehículo, traspaso y seguro incluido, sin financiación ni intereses.'}
         </p>
       </div>
 
@@ -1146,14 +1296,16 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
 
       {resultado && (
         <>
-          {/* Advertencia persistente (M6, spec.md 27.4): texto literal aprobado, con su origen debajo (39.4.1). */}
-          {hayDatosNoConfirmadosEnCalculo(resultado.datosNoConfirmados) && (
-            <div role="status" className="p-4 bg-amber-50 border border-amber-300 text-amber-900 text-sm flex items-start gap-3 rounded-md">
-              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold tracking-wide">MODELO CON DATOS NO CONFIRMADOS</p>
-                <p className="mt-1">{T.origenAvisoM6}</p>
-              </div>
+          {/* Advertencia persistente (M6, spec.md 27.4), en franja discreta y neutra desde 2026-09-27 (spec.md 40.5):
+              sigue visible siempre que el seguro histórico entra al cálculo. Textos aprobados en `textosInterfaz.ts`. */}
+          {avisoSeguro && (
+            <div role="status" data-aviso="m6" data-modo-seguro={modoSeguro} className="px-3 py-2 bg-neutral-50 border border-neutral-200 text-humania-gray text-xs flex items-start gap-2 rounded-md">
+              <Info className="w-4 h-4 shrink-0 mt-px text-humania-blue/70" />
+              <p>
+                <span className="font-bold tracking-wide text-humania-blue">{avisoSeguro.titulo}</span>
+                <span className="mx-1.5 text-neutral-300" aria-hidden="true">·</span>
+                {avisoSeguro.texto}
+              </p>
             </div>
           )}
           {/* KAI-29 B3, spec.md 38.5 — histórico (guardado) vs. actual (recalculado). Puramente informativo. */}
@@ -1192,11 +1344,8 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                 <Fila label="Costo / inversión inicial" valor={cop(resultado.inversionInicialTotal)} destacado />
                 <Fila label="Recursos propios de Humania" valor={cop(resultado.recursosPropios)} />
                 <Fila label="Financiación bancaria" valor={cop(resultado.financiacionBancaria)} />
-                <Fila
-                  label={seguroEnCalculo && parametros.modalidadAdquisicion === 'CREDITO' ? T.financiacionSeguroHistorica : 'Financiación del seguro'}
-                  valor={cop(resultado.principalFinanciacionSeguro)}
-                />
-                <Fila label={T.seguroUsado.etiqueta} valor={seguroEnCalculo ? T.seguroUsado.modeloAnterior : T.seguroUsado.noIncluido} />
+                <Fila label={etiquetaFinanciacionSeguro} valor={cop(resultado.principalFinanciacionSeguro)} />
+                <Fila label={T.seguroUsado.etiqueta} valor={seguroUsadoTexto} />
                 <Fila label="% financiado" valor={pct((resultado.financiacionBancaria + resultado.principalFinanciacionSeguro) / resultado.inversionInicialTotal)} />
                 <Fila label="% capital propio" valor={pct(resultado.recursosPropios / resultado.inversionInicialTotal)} />
               </Tarjeta>
@@ -1221,12 +1370,14 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                   <Fila label="SOAT (renovaciones adicionales)" valor={cop(resultado.costosRecurrentes.soat.totalAdicional)} />
                   <Fila label="Tecnomecánica (renovaciones adicionales)" valor={cop(resultado.costosRecurrentes.tecnomecanica.totalAdicional)} />
                   <Fila label="Impuestos (renovaciones adicionales)" valor={cop(resultado.costosRecurrentes.impuestos.totalAdicional)} />
+                  {/* Solo con seguro digitado: la póliza se renueva cada año, igual que el SOAT (KAI-41). */}
+                  {resultado.costosRecurrentes.seguro && (
+                    <Fila label={T.renovacionesSeguro} valor={cop(resultado.costosRecurrentes.seguro.totalAdicional)} />
+                  )}
                 </div>
               </div>
-              {/* El costo financiero del seguro solo existe en Crédito bancario con la referencia histórica en el cálculo. */}
-              {seguroEnCalculo && parametros.modalidadAdquisicion === 'CREDITO' && (
-                <p className="text-xs text-humania-gray/70 mt-3">{T.notaCostosSeguro}</p>
-              )}
+              {/* El costo financiero del seguro solo existe en Crédito bancario, con la referencia histórica o el seguro digitado. */}
+              {notaCostosSeguro && <p className="text-xs text-humania-gray/70 mt-3">{notaCostosSeguro}</p>}
             </Tarjeta>
 
             <Tarjeta titulo="Análisis detallado — payback (real dentro del contrato vs. extrapolado)">
@@ -1437,6 +1588,8 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
               </div>
             </div>
 
+            {/* En Recursos propios no hay financiación bancaria: el grupo no se muestra (el seguro tiene su propio grupo). */}
+            {esCredito && (
             <div>
               <TituloGrupo>{T.grupos.financiacionBancaria}</TituloGrupo>
               {parametros.modalidadAdquisicion === 'CREDITO' && (
@@ -1479,8 +1632,10 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
                   </p>
                 </>
               )}
-              {bloqueModeloAnteriorSeguro}
             </div>
+            )}
+
+            {bloqueSeguroActivo}
 
             <div>
               <TituloGrupo>{T.grupos.contratoConductor}</TituloGrupo>

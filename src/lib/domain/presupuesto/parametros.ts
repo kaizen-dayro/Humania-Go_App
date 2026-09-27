@@ -6,6 +6,7 @@
 
 import { calcularCronogramaSeguro, type CotizacionSeguro } from '../seguros/adaptador'
 import { SEGURO_LEGACY_REFERENCIA } from './seguroLegacy'
+import type { SeguroDigitadoParametros } from './seguroDigitado'
 
 /**
  * Modalidad de adquisición del activo — decisión pedida explícitamente
@@ -26,9 +27,18 @@ export type ModalidadAdquisicion = 'CREDITO' | 'RECURSOS_PROPIOS'
  *   como lo hacía antes, con el banner MODELO CON DATOS NO CONFIRMADOS.
  * - SIN_MODELAR: el seguro queda FUERA del cálculo (ni capital, ni costo,
  *   ni cuotas). No es un valor de negocio: es la ausencia de modelo hasta
- *   que exista una integración financiera aprobada.
+ *   que exista una integración financiera aprobada. Desde KAI-41 solo llega
+ *   en presupuestos guardados antes; la interfaz no lo ofrece.
+ * - DIGITADO (KAI-41): los datos de la póliza de este activo, digitados en el
+ *   presupuesto (`seguro.digitado`), sin soporte documental. Reglas en
+ *   `seguroDigitado.ts` (renovación anual, corte al terminar el crédito).
+ * - SIN_SEGURO (KAI-41): decisión de negocio confirmada de que Humania no paga
+ *   seguro para este activo. Mismo efecto numérico que SIN_MODELAR (cero), pero
+ *   no es un dato faltante.
  */
-export type ModoSeguro = 'LEGACY_NO_CONFIRMADO' | 'SIN_MODELAR'
+export type ModoSeguro = 'LEGACY_NO_CONFIRMADO' | 'SIN_MODELAR' | 'DIGITADO' | 'SIN_SEGURO'
+
+export const MODOS_SEGURO: readonly ModoSeguro[] = ['LEGACY_NO_CONFIRMADO', 'SIN_MODELAR', 'DIGITADO', 'SIN_SEGURO']
 
 /**
  * Datos del modelo anterior del seguro. El plazo es PROPIO del seguro: ya no
@@ -49,6 +59,12 @@ export interface SeguroParametros {
    * (la integración financiera sigue pendiente). null = no hay cotización cargada.
    */
   cotizacion: CotizacionSeguro | null
+  /**
+   * Datos de la póliza digitados en este presupuesto (KAI-41). Opcional: los presupuestos
+   * anteriores no lo tienen. Obligatorio solo en modo DIGITADO; en los demás modos se conserva
+   * (si existe) para poder volver a él, pero no entra al cálculo.
+   */
+  digitado?: SeguroDigitadoParametros
 }
 
 export interface ParametrosPresupuesto {
@@ -182,7 +198,9 @@ export interface SeguroEfectivo {
  * `mesesCreditoVehiculo` ni la cotización (informativa).
  */
 export function seguroEfectivo(p: ParametrosPresupuesto): SeguroEfectivo {
-  if (p.seguro.modo === 'SIN_MODELAR') return { principal: 0, costoFinancieroTotal: 0, plazoMeses: 0 }
+  // Solo el modelo anterior usa esta estructura; los demás modos no aportan nada por esta vía
+  // (DIGITADO se calcula aparte, en seguroDigitado.ts).
+  if (p.seguro.modo !== 'LEGACY_NO_CONFIRMADO') return { principal: 0, costoFinancieroTotal: 0, plazoMeses: 0 }
   const { principalFinanciacion, costoFinancieroEstimado, plazoMeses } = p.seguro.legacy
   return { principal: principalFinanciacion, costoFinancieroTotal: costoFinancieroEstimado, plazoMeses }
 }
@@ -203,8 +221,19 @@ export function conSeguroLegacy(p: ParametrosPresupuesto, cambios: Partial<Segur
  *   del seguro es el del modelo LEGACY (no confirmado; spec.md 25 y 26.5)
  *   y solo entra si el modo es LEGACY_NO_CONFIRMADO.
  */
+/**
+ * Lo que el seguro suma a la inversión inicial. Modelo anterior: su capital (sin cambio). DIGITADO
+ * (KAI-41): en Recursos propios, el valor de la póliza (de contado); en Crédito, el pago inicial más lo
+ * financiado (lo financiado se trata igual que el capital del modelo anterior y del crédito del vehículo).
+ */
+export function capitalSeguroEnInversion(p: ParametrosPresupuesto): number {
+  const d = p.seguro.modo === 'DIGITADO' ? p.seguro.digitado : undefined
+  if (d) return p.modalidadAdquisicion === 'RECURSOS_PROPIOS' ? d.valorPoliza : d.pagoInicial + d.valorFinanciado
+  return seguroEfectivo(p).principal
+}
+
 export function inversionInicial(p: ParametrosPresupuesto): number {
-  const capitalSeguro = seguroEfectivo(p).principal
+  const capitalSeguro = capitalSeguroEnInversion(p)
   if (p.modalidadAdquisicion === 'RECURSOS_PROPIOS') {
     return (
       p.precioCompra +
@@ -273,14 +302,49 @@ export function margenVentaActivo(p: ParametrosPresupuesto): number {
  */
 export const PORCENTAJE_ABONO_CAPITAL_MAXIMO = 5
 
+/**
+ * Reglas del seguro digitado (KAI-41, spec.md 41). En Recursos propios solo se usa el valor de la póliza.
+ * En Crédito: las cuotas caben antes de la siguiente renovación, no suman menos que lo financiado, y el
+ * pago inicial más lo financiado no es menor que la póliza (financiar nunca abarata la póliza; esto además
+ * garantiza que el ROI no baje al aumentar el abono, condición de la búsqueda del abono mínimo).
+ */
+function validarSeguroDigitado(p: ParametrosPresupuesto): string[] {
+  const d = p.seguro.digitado
+  if (!d || typeof d !== 'object') return ['seguro.digitado es obligatorio en modo DIGITADO']
+  const errores: string[] = []
+  const esNumero = (campo: keyof SeguroDigitadoParametros): boolean => {
+    const v = d[campo]
+    if (typeof v === 'number' && Number.isFinite(v)) return true
+    errores.push(`seguro.digitado.${campo} debe ser un número (recibido: ${String(v)})`)
+    return false
+  }
+  if (esNumero('valorPoliza') && d.valorPoliza <= 0) errores.push(`seguro.digitado.valorPoliza debe ser mayor que 0 (recibido: ${d.valorPoliza})`)
+  if (p.modalidadAdquisicion !== 'CREDITO') return errores
+  const numericos = [esNumero('pagoInicial'), esNumero('valorFinanciado'), esNumero('numeroCuotas'), esNumero('valorCuota')]
+  if (!numericos.every(Boolean) || errores.length > 0) return errores
+  if (d.pagoInicial < 0) errores.push(`seguro.digitado.pagoInicial no puede ser negativo (recibido: ${d.pagoInicial})`)
+  if (d.valorFinanciado < 0) errores.push(`seguro.digitado.valorFinanciado no puede ser negativo (recibido: ${d.valorFinanciado})`)
+  if (d.valorCuota < 0) errores.push(`seguro.digitado.valorCuota no puede ser negativo (recibido: ${d.valorCuota})`)
+  if (!Number.isInteger(d.numeroCuotas) || d.numeroCuotas < 1 || d.numeroCuotas > p.mesesPorAno) {
+    errores.push(`seguro.digitado.numeroCuotas debe ser un entero entre 1 y ${p.mesesPorAno} (recibido: ${d.numeroCuotas})`)
+  } else if (d.numeroCuotas * d.valorCuota < d.valorFinanciado) {
+    errores.push('seguro.digitado.numeroCuotas × seguro.digitado.valorCuota no puede ser menor que seguro.digitado.valorFinanciado')
+  }
+  if (d.pagoInicial + d.valorFinanciado < d.valorPoliza) {
+    errores.push('seguro.digitado.pagoInicial + seguro.digitado.valorFinanciado no puede ser menor que seguro.digitado.valorPoliza')
+  }
+  return errores
+}
+
 function validarSeguro(p: ParametrosPresupuesto): string[] {
   const errores: string[] = []
   // Una entrada malformada (p. ej. la forma plana anterior) se informa como error de validación; nunca lanza.
   if (!p.seguro || typeof p.seguro !== 'object') return ['seguro es obligatorio (modo, legacy y cotizacion)']
   const { modo, legacy, cotizacion } = p.seguro
-  if (modo !== 'LEGACY_NO_CONFIRMADO' && modo !== 'SIN_MODELAR') {
+  if (!MODOS_SEGURO.includes(modo)) {
     errores.push(`seguro.modo no es válido (recibido: ${String(modo)})`)
   }
+  if (modo === 'DIGITADO') errores.push(...validarSeguroDigitado(p))
   if (modo === 'LEGACY_NO_CONFIRMADO' && (!legacy || typeof legacy !== 'object')) {
     errores.push('seguro.legacy es obligatorio en modo LEGACY_NO_CONFIRMADO')
   } else if (modo === 'LEGACY_NO_CONFIRMADO') {
