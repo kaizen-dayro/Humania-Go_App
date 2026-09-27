@@ -47,7 +47,13 @@ import {
   type PoliticaFinanciera,
   type Veredicto,
 } from '@/lib/domain/presupuesto/politicaFinanciera'
-import { calcularAbonoMinimo, type ResultadoAbonoMinimo } from '@/lib/domain/presupuesto/abonoMinimo'
+import {
+  abonoMinimoContrato,
+  calcularAbonoMinimo,
+  type ResultadoAbonoContrato,
+  type ResultadoAbonoMinimo,
+} from '@/lib/domain/presupuesto/abonoMinimo'
+import { construirAlertasOperacion, mesFinDelContrato } from '@/lib/domain/presupuesto/alertasOperacion'
 import {
   abonoActivo,
   modeloGraficoFlujo,
@@ -415,6 +421,8 @@ function TextoAbonoMinimo({ abono, parametros }: { abono: ResultadoAbonoMinimo; 
       return <p className="text-sm text-amber-900">{T.abonoMinimo.noAlcanzablePayback}</p>
     case 'NO_ALCANZABLE_POR_ROI':
       return <p className="text-sm text-amber-900">{T.abonoMinimo.noAlcanzableRoi(pct(abono.porcentajeMaximo), pct(abono.roiMinimo))}</p>
+    case 'NO_ALCANZABLE_POR_CONTRATO':
+      return <p className="text-sm text-amber-900">{T.abonoMinimo.noAlcanzableContrato(pct(abono.porcentajeMaximo))}</p>
     case 'NO_APLICA_RECURSOS_PROPIOS':
       return <p className="text-sm text-humania-gray">{T.abonoMinimo.soloCredito}</p>
     case 'PARAMETROS_INVALIDOS':
@@ -428,12 +436,15 @@ function DecisionOperacion({
   evaluacion,
   abonoMinimo,
   parametros,
+  mesContrato,
   sinPolitica,
   politicaInvalida,
 }: {
   evaluacion: EvaluacionPolitica | null
   abonoMinimo: ResultadoAbonoMinimo | null
   parametros: ParametrosPresupuesto
+  /** Mes en que termina el contrato (para la razón "el crédito termina después del contrato"). */
+  mesContrato: number
   sinPolitica: boolean
   /** La política existe pero sus umbrales no son válidos: no se evalúa (nunca se inventa un veredicto). */
   politicaInvalida: boolean
@@ -465,7 +476,7 @@ function DecisionOperacion({
           {(evaluacion.incumplimientos.length > 0 || evaluacion.observaciones.length > 0) && (
             <ul className="text-sm space-y-1 list-disc list-inside text-humania-gray">
               {evaluacion.incumplimientos.map((i) => (
-                <li key={i.tipo}>{textoIncumplimiento(i, pct2)}</li>
+                <li key={i.tipo}>{textoIncumplimiento(i, pct2, mesContrato)}</li>
               ))}
               {evaluacion.observaciones.map((o) => (
                 <li key={o.tipo}>{textoObservacion(o)}</li>
@@ -486,34 +497,22 @@ function DecisionOperacion({
 
 // ===== Estado de la operación — conclusión y alertas por separado =====
 
-function EstadoOperacion({ resultado, parametros }: { resultado: ResultadoMetricas; parametros: ParametrosPresupuesto }) {
-  const semanasPorMes = parametros.semanasPorAno / parametros.mesesPorAno
-  const mesAlFinDelContrato = resultado.flujo.duracionContratoSemanas / semanasPorMes
-  // Con abono a capital el crédito dura menos que su plazo nominal: se compara la duración REAL (`mesesCreditoReales`).
-  const creditoSobrevive = resultado.creditoSobreviveAlContrato
-
+function EstadoOperacion({
+  resultado,
+  parametros,
+  abonoContrato,
+}: {
+  resultado: ResultadoMetricas
+  parametros: ParametrosPresupuesto
+  abonoContrato: ResultadoAbonoContrato
+}) {
   // El estado general (verde/ámbar) se decide con el payback de flujo contractual completo — "el valor real que
-  // recibe Humania". Las demás vistas se muestran siempre como alertas: nunca se ocultan.
+  // recibe Humania".
   const recuperaInversion = resultado.paybackFlujoContractualCompleto !== null
 
-  const alertas: string[] = []
-  if (resultado.paybackOperativo === null) {
-    alertas.push('Sin contar el componente de adquisición del conductor, el ingreso operativo de Humania por sí solo no alcanza a cubrir la inversión inicial dentro del contrato.')
-  }
-  if (resultado.paybackFinancieroRentabilidad === null) {
-    alertas.push('Después de restar intereses y costos recurrentes (vista de rentabilidad), la inversión no se recupera dentro del plazo contractual.')
-  }
-  if (resultado.paybackFinancieroCaja === null) {
-    alertas.push('Después de restar la cuota bancaria completa y costos recurrentes (vista de flujo de caja), la inversión no se recupera dentro del plazo contractual.')
-  }
-  if (creditoSobrevive) {
-    alertas.push(
-      `El crédito bancario (plazo ${resultado.mesesCreditoReales} meses) continúa pagándose después de finalizar el contrato con el conductor (contrato ≈ ${mesAlFinDelContrato.toFixed(1)} meses).`,
-    )
-  }
-  if (resultado.resultadoNeto < 0) {
-    alertas.push('El resultado neto (vista rentabilidad, sin contar el componente de adquisición) es negativo al cierre del contrato.')
-  }
+  // KAI-42: cada alerta aparece solo si su condición se cumple con los números de esta simulación; las tres
+  // alertas de paybacks que se cumplían casi siempre se retiraron (siguen visibles en la tabla de paybacks).
+  const { alertas, creditoPagadoAntes } = construirAlertasOperacion(parametros, resultado, abonoContrato, { moneda: cop, porcentaje: pct })
 
   return (
     <div className="space-y-3">
@@ -527,6 +526,12 @@ function EstadoOperacion({ resultado, parametros }: { resultado: ResultadoMetric
                 ? `La operación recupera la inversión dentro del plazo contractual — semana ${resultado.paybackFlujoContractualCompleto} (flujo contractual completo, incluye el valor de venta del activo).`
                 : `La operación no recupera la inversión dentro del plazo contractual, ni siquiera contando el flujo contractual completo (${cop(parametros.cuotaSemanalConductor)}/semana + valor de venta del activo).`}
             </p>
+            {creditoPagadoAntes && (
+              <p data-credito-pagado-antes className="text-sm mt-2 flex items-start gap-1.5 text-emerald-800">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                {creditoPagadoAntes}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -913,6 +918,13 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
     () => (resultado && politicaValida ? calcularAbonoMinimo(parametros, semanasAplazatoriasUsadas, politicaValida) : null),
     [resultado, politicaValida, parametros, semanasAplazatoriasUsadas],
   )
+  // KAI-42: abono que exige SOLO el contrato (crédito pagado antes de terminar); lo informa la alerta del crédito.
+  // Se calcula aunque no haya política (la regla es del contrato, no de la política).
+  const abonoContrato = useMemo<ResultadoAbonoContrato>(
+    () => (resultado ? abonoMinimoContrato(parametros, semanasAplazatoriasUsadas) : { estado: 'SIN_CREDITO' }),
+    [resultado, parametros, semanasAplazatoriasUsadas],
+  )
+  const mesContrato = resultado ? mesFinDelContrato(parametros, resultado) : 0
   const porcentajeAbonoMinimo =
     abonoMinimo?.estado === 'ENCONTRADO' || abonoMinimo?.estado === 'YA_CUMPLE_SIN_ABONO' ? abonoMinimo.detalle.porcentaje : null
   const puntosSensibilidad = useMemo(
@@ -1325,8 +1337,15 @@ export function CalculadoraPresupuesto({ cotizacionSeguro = null, estadoCotizaci
           )}
 
           <ResumenEjecutivo resultado={resultado} parametros={parametros} evaluacion={evaluacion} />
-          <DecisionOperacion evaluacion={evaluacion} abonoMinimo={abonoMinimo} parametros={parametros} sinPolitica={politica === null} politicaInvalida={politica !== null && erroresPolitica.length > 0} />
-          <EstadoOperacion resultado={resultado} parametros={parametros} />
+          <DecisionOperacion
+            evaluacion={evaluacion}
+            abonoMinimo={abonoMinimo}
+            parametros={parametros}
+            mesContrato={mesContrato}
+            sinPolitica={politica === null}
+            politicaInvalida={politica !== null && erroresPolitica.length > 0}
+          />
+          <EstadoOperacion resultado={resultado} parametros={parametros} abonoContrato={abonoContrato} />
 
           {/* ================= ZONA DE ANÁLISIS ================= */}
           <div className="pt-6 border-t border-neutral-200 space-y-8">

@@ -69,10 +69,14 @@ verificar('D8: clasificación del payback en los bordes exactos, y no alcanzado 
 verificar('D8: veredicto de los tres casos de spec.md 39.1.1 con la Opción A (DEC-1)', () => {
   // Escenario de referencia real: ROI 41,0 %, payback semana 87 → cumple la regla, payback en zona de observación.
   const ref = calcularMetricas(PARAMETROS_REFERENCIA, 0)
-  const eRef = evaluarPolitica(ref, P)
+  // Solo los umbrales de la política (ROI y payback): sin cambio desde el 25-09.
+  const eRef = evaluarPolitica({ roiSobreInversionTotal: ref.roiSobreInversionTotal, paybackFlujoContractualCompleto: ref.paybackFlujoContractualCompleto }, P)
   assert.equal(ref.paybackFlujoContractualCompleto, 87)
   assert.equal(eRef.veredicto, 'CUMPLE_CON_OBSERVACIONES')
   assert.deepEqual(eRef.observaciones, [{ tipo: 'PAYBACK_RIESGO_ELEVADO', semana: 87 }])
+  // KAI-42 (cambio aprobado el 27-09): con la regla del contrato, la referencia (crédito a 72 meses, contrato de
+  // 35) NO CUMPLE, porque el crédito no queda pagado dentro del contrato. Ver verificacionAlertasContrato.ts.
+  assert.equal(evaluarPolitica(ref, P).veredicto, 'NO_CUMPLE')
   assert.equal(ev(0.25, 60).veredicto, 'NO_CUMPLE')
   assert.equal(ev(0.25, 60).clasificacionRoi, 'BAJO')
   assert.equal(ev(0.45, 100).veredicto, 'CUMPLE_CON_OBSERVACIONES')
@@ -115,7 +119,9 @@ verificar('D8: la política usa los umbrales que recibe (una política editada c
   const r = calcularMetricas(PARAMETROS_REFERENCIA, 0)
   const e = evaluarPolitica(r, exigente)
   assert.equal(e.veredicto, 'NO_CUMPLE')
-  assert.deepEqual(e.incumplimientos.map((i) => i.tipo), ['ROI_BAJO_MINIMO', 'PAYBACK_SOBRE_MAXIMO'])
+  // Los dos primeros vienen de los umbrales editados; el tercero es la regla del contrato (KAI-42), que la
+  // referencia incumple con cualquier política (crédito a 72 meses, contrato de 35).
+  assert.deepEqual(e.incumplimientos.map((i) => i.tipo), ['ROI_BAJO_MINIMO', 'PAYBACK_SOBRE_MAXIMO', 'CREDITO_DESPUES_DEL_CONTRATO'])
 })
 
 verificar('D8: validarPolitica rechaza orden inválido, negativos, NaN, payback no entero, versión y estructura (AC-45)', () => {
@@ -173,8 +179,14 @@ verificar('Textos aprobados (spec.md 39.4.1): veredictos, razones, D6 y payback 
   assert.equal(T.razones.paybackNoAlcanzado, 'El payback contractual no se alcanza dentro del contrato.')
   assert.equal(T.razones.paybackRiesgoElevado(87), 'Payback contractual en riesgo elevado (semana 87).')
   assert.equal(T.sinPolitica, 'Este presupuesto se guardó sin política financiera registrada; no se evalúa con la política vigente.')
-  assert.equal(T.abonoMinimo.titulo, 'Abono mínimo requerido para cumplir la política')
-  assert.equal(T.abonoMinimo.yaCumple, 'La operación ya cumple la política sin abono.')
+  // KAI-42 (aprobados 2026-09-27): el abono mínimo cumple la política y el contrato.
+  assert.equal(T.abonoMinimo.titulo, 'Abono mínimo requerido para cumplir la política y el contrato')
+  assert.equal(T.abonoMinimo.yaCumple, 'La operación ya cumple la política y el contrato sin abono.')
+  assert.equal(T.abonoMinimo.noAlcanzableContrato('500,0%'), 'Ningún abono dentro del máximo de 500,0% deja el crédito pagado antes de terminar el contrato.')
+  assert.equal(
+    T.razones.creditoDespuesDelContrato(72, 35),
+    'El crédito termina en el mes 72, después de terminar el contrato (mes 35); por contrato debe quedar pagado antes.',
+  )
   assert.equal(T.abonoMinimo.encontrado('12,3%', '$88.000', 3), '12,3% de la cuota mensual ($88.000/mes) desde el mes 3.')
   assert.equal(T.abonoMinimo.noAlcanzableRoi('500,0%', '30,0%'), 'Ningún abono dentro del máximo de 500,0% alcanza el ROI mínimo de 30,0%.')
   assert.equal(T.abonoMinimo.noAlcanzablePayback, 'El abono no modifica el payback contractual: con el payback actual, la política no se alcanza mediante abono.')

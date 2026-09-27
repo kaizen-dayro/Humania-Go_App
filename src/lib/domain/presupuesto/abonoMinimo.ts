@@ -40,6 +40,8 @@ export type ResultadoAbonoMinimo =
   | { estado: 'ENCONTRADO'; detalle: DetalleAbono; evaluaciones: number }
   | { estado: 'NO_ALCANZABLE_POR_PAYBACK'; evaluacionSinAbono: EvaluacionPolitica }
   | { estado: 'NO_ALCANZABLE_POR_ROI'; roiConAbonoMaximo: number; roiMinimo: number; porcentajeMaximo: number }
+  /** KAI-42: ni con el abono máximo el crédito queda pagado dentro del contrato. */
+  | { estado: 'NO_ALCANZABLE_POR_CONTRATO'; porcentajeMaximo: number }
   | { estado: 'NO_APLICA_RECURSOS_PROPIOS' }
   | { estado: 'PARAMETROS_INVALIDOS'; errores: string[] }
   /** Salvaguarda: la verificación final de minimalidad falló (no debería ocurrir, 39.8.1). Nunca se devuelve un abono sin verificar. */
@@ -69,7 +71,10 @@ function detalle(p: ParametrosPresupuesto, porcentaje: number, r: ResultadoMetri
 
 /**
  * Menor abono de la grilla {0; 0,1%; …; 500%} con el que la operación cumple la política
- * (ROI ≥ mínimo y payback ≤ máximo), manteniendo el mes de inicio configurado.
+ * (ROI ≥ mínimo y payback ≤ máximo) y el contrato (crédito pagado antes de terminar el contrato,
+ * KAI-42), manteniendo el mes de inicio configurado. Las tres condiciones son escalones monótonos
+ * en el abono (más abono nunca baja el ROI, no mueve el payback y nunca alarga el crédito), así que
+ * su conjunción también lo es y la búsqueda binaria sigue siendo exacta.
  */
 export function calcularAbonoMinimo(p: ParametrosPresupuesto, semanasAplazatoriasUsadas: number, politica: PoliticaFinanciera): ResultadoAbonoMinimo {
   const errores = [...validarParametros(p), ...validarPolitica(politica)]
@@ -88,15 +93,16 @@ export function calcularAbonoMinimo(p: ParametrosPresupuesto, semanasAplazatoria
   }
   const cumple = (paso: number) => {
     const { e } = evaluar(paso)
-    return e.cumpleRoi && e.cumplePayback
+    return e.cumpleRoi && e.cumplePayback && e.cumpleContrato
   }
 
   const base = evaluar(0)
   // El abono no mueve el payback contractual (39.8.1): si no cumple sin abono, no cumple con ninguno.
   if (!base.e.cumplePayback) return { estado: 'NO_ALCANZABLE_POR_PAYBACK', evaluacionSinAbono: base.e }
-  if (base.e.cumpleRoi) return { estado: 'YA_CUMPLE_SIN_ABONO', detalle: detalle(p, 0, base.r, base.e) }
+  if (base.e.cumpleRoi && base.e.cumpleContrato) return { estado: 'YA_CUMPLE_SIN_ABONO', detalle: detalle(p, 0, base.r, base.e) }
 
   const tope = evaluar(PASO_MAXIMO_ABONO)
+  if (!tope.e.cumpleContrato) return { estado: 'NO_ALCANZABLE_POR_CONTRATO', porcentajeMaximo: PORCENTAJE_ABONO_CAPITAL_MAXIMO }
   if (!tope.e.cumpleRoi) {
     return { estado: 'NO_ALCANZABLE_POR_ROI', roiConAbonoMaximo: tope.e.roi, roiMinimo: tope.e.roiMinimo, porcentajeMaximo: PORCENTAJE_ABONO_CAPITAL_MAXIMO }
   }
@@ -126,7 +132,35 @@ export function abonoMinimoExhaustivo(p: ParametrosPresupuesto, semanasAplazator
   for (let paso = 0; paso <= PASO_MAXIMO_ABONO; paso++) {
     const r = calcularMetricas(conAbono(p, paso / PASOS_POR_UNIDAD_ABONO), semanasAplazatoriasUsadas)
     const e = evaluarPolitica(r, politica)
-    if (e.cumpleRoi && e.cumplePayback) return paso
+    if (e.cumpleRoi && e.cumplePayback && e.cumpleContrato) return paso
   }
   return null
+}
+
+export type ResultadoAbonoContrato =
+  | { estado: 'SIN_CREDITO' }
+  | { estado: 'CUMPLE_SIN_ABONO' }
+  | { estado: 'ENCONTRADO'; porcentaje: number; montoMensual: number; mesInicio: number }
+  | { estado: 'NO_ALCANZABLE'; porcentajeMaximo: number; mesInicio: number }
+
+/**
+ * KAI-42 — Menor abono de la grilla con el que el crédito queda pagado dentro del contrato, SOLO por la
+ * regla contractual (sin la política). Es lo que informa la alerta del contrato. Monótono: más abono
+ * nunca alarga el crédito. Nunca modifica los parámetros recibidos.
+ */
+export function abonoMinimoContrato(p: ParametrosPresupuesto, semanasAplazatoriasUsadas: number): ResultadoAbonoContrato {
+  if (p.modalidadAdquisicion !== 'CREDITO') return { estado: 'SIN_CREDITO' }
+  const sobrevive = (paso: number) => calcularMetricas(conAbono(p, paso / PASOS_POR_UNIDAD_ABONO), semanasAplazatoriasUsadas).creditoSobreviveAlContrato
+  if (!sobrevive(0)) return { estado: 'CUMPLE_SIN_ABONO' }
+  if (sobrevive(PASO_MAXIMO_ABONO)) return { estado: 'NO_ALCANZABLE', porcentajeMaximo: PORCENTAJE_ABONO_CAPITAL_MAXIMO, mesInicio: p.mesInicioAbonoCapital }
+  let bajo = 0
+  let alto = PASO_MAXIMO_ABONO
+  while (alto - bajo > 1) {
+    const medio = Math.floor((bajo + alto) / 2)
+    if (sobrevive(medio)) bajo = medio
+    else alto = medio
+  }
+  const porcentaje = alto / PASOS_POR_UNIDAD_ABONO
+  const cuotaMensual = calcularMetricas(p, semanasAplazatoriasUsadas).amortizacionNormal?.cuotaMensual ?? 0
+  return { estado: 'ENCONTRADO', porcentaje, montoMensual: porcentaje * cuotaMensual, mesInicio: p.mesInicioAbonoCapital }
 }

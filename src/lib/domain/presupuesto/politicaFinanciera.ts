@@ -34,6 +34,12 @@ export type Incumplimiento =
   | { tipo: 'ROI_BAJO_MINIMO'; roi: number; roiMinimo: number }
   | { tipo: 'PAYBACK_SOBRE_MAXIMO'; semana: number; paybackMaximo: number }
   | { tipo: 'PAYBACK_NO_ALCANZADO' }
+  /**
+   * KAI-42 (regla contractual confirmada por Humania Go, 2026-09-27): el crédito bancario del activo debe
+   * quedar pagado antes de terminar el contrato con el conductor. `mesCredito` = mes real en que termina
+   * (con abono, antes del plazo nominal).
+   */
+  | { tipo: 'CREDITO_DESPUES_DEL_CONTRATO'; mesCredito: number }
 
 export type Observacion = { tipo: 'PAYBACK_RIESGO_ELEVADO'; semana: number }
 
@@ -45,6 +51,8 @@ export interface EvaluacionPolitica {
   clasificacionPayback: ClasificacionPayback
   cumpleRoi: boolean
   cumplePayback: boolean
+  /** KAI-42: el crédito queda pagado dentro del contrato (siempre true sin crédito, en Recursos propios). */
+  cumpleContrato: boolean
   roiMinimo: number
   paybackMaximo: number
   /** Una entrada por cada condición incumplida (vacío salvo en NO_CUMPLE). */
@@ -83,9 +91,20 @@ export function clasificarPayback(semana: number | null, politica: PoliticaFinan
  * Evalúa la política D8 (DEC-1 = Opción A). La firma recibe SOLO las dos métricas de la
  * política: el ROI sobre recursos propios no puede participar (AC-47). Las comparaciones
  * usan el valor real, nunca el porcentaje redondeado de pantalla.
+ *
+ * KAI-42: además de la política, se evalúa la regla contractual de que el crédito quede pagado
+ * dentro del contrato (`creditoSobreviveAlContrato`, calculado por el motor con la duración REAL
+ * del crédito). No es un umbral de la política (no se guarda ni se edita con ella): es una
+ * condición del contrato, y un plan que la incumple no cumple (NO_CUMPLE). Si la métrica no llega
+ * (llamadas anteriores a KAI-42), se considera cumplida.
  */
 export function evaluarPolitica(
-  metricas: { roiSobreInversionTotal: number; paybackFlujoContractualCompleto: number | null },
+  metricas: {
+    roiSobreInversionTotal: number
+    paybackFlujoContractualCompleto: number | null
+    creditoSobreviveAlContrato?: boolean
+    mesesCreditoReales?: number | null
+  },
   politica: PoliticaFinanciera,
 ): EvaluacionPolitica {
   const roi = metricas.roiSobreInversionTotal
@@ -96,11 +115,13 @@ export function evaluarPolitica(
   const clasificacionPayback = clasificarPayback(payback, politica)
   const cumpleRoi = roi >= minimo
   const cumplePayback = payback !== null && payback <= maximo
+  const cumpleContrato = metricas.creditoSobreviveAlContrato !== true
 
   const incumplimientos: Incumplimiento[] = []
   if (!cumpleRoi) incumplimientos.push({ tipo: 'ROI_BAJO_MINIMO', roi, roiMinimo: minimo })
   if (payback === null) incumplimientos.push({ tipo: 'PAYBACK_NO_ALCANZADO' })
   else if (!cumplePayback) incumplimientos.push({ tipo: 'PAYBACK_SOBRE_MAXIMO', semana: payback, paybackMaximo: maximo })
+  if (!cumpleContrato) incumplimientos.push({ tipo: 'CREDITO_DESPUES_DEL_CONTRATO', mesCredito: metricas.mesesCreditoReales ?? 0 })
 
   // Con el ROI mínimo definido como inicio de BUENO, un ROI que cumple nunca está en la banda
   // BAJO: la única zona de observación posible es el payback en RIESGO ELEVADO (spec.md 39.9).
@@ -118,6 +139,7 @@ export function evaluarPolitica(
     clasificacionPayback,
     cumpleRoi,
     cumplePayback,
+    cumpleContrato,
     roiMinimo: minimo,
     paybackMaximo: maximo,
     incumplimientos,

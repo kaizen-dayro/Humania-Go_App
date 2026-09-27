@@ -33,17 +33,38 @@ export const TEXTOS_APROBADOS = {
     paybackSobreMaximo: (semana: number, maximo: number) => `Payback contractual en la semana ${semana}, por encima del máximo de ${maximo} semanas.`,
     paybackNoAlcanzado: 'El payback contractual no se alcanza dentro del contrato.',
     paybackRiesgoElevado: (semana: number) => `Payback contractual en riesgo elevado (semana ${semana}).`,
+    // KAI-42 (aprobado 2026-09-27): el crédito debe quedar pagado dentro del contrato.
+    creditoDespuesDelContrato: (mesCredito: number, mesContrato: number) =>
+      `El crédito termina en el mes ${mesCredito}, después de terminar el contrato (mes ${mesContrato}); por contrato debe quedar pagado antes.`,
   },
   sinPolitica: 'Este presupuesto se guardó sin política financiera registrada; no se evalúa con la política vigente.',
   abonoMinimo: {
-    titulo: 'Abono mínimo requerido para cumplir la política',
-    yaCumple: 'La operación ya cumple la política sin abono.',
+    // KAI-42 (aprobado 2026-09-27): el abono mínimo cumple a la vez la política y el contrato.
+    titulo: 'Abono mínimo requerido para cumplir la política y el contrato',
+    yaCumple: 'La operación ya cumple la política y el contrato sin abono.',
+    noAlcanzableContrato: (maximo: string) => `Ningún abono dentro del máximo de ${maximo} deja el crédito pagado antes de terminar el contrato.`,
     encontrado: (porcentaje: string, monto: string, mes: number) => `${porcentaje} de la cuota mensual (${monto}/mes) desde el mes ${mes}.`,
     noAlcanzableRoi: (maximo: string, minimo: string) => `Ningún abono dentro del máximo de ${maximo} alcanza el ROI mínimo de ${minimo}.`,
     noAlcanzablePayback: 'El abono no modifica el payback contractual: con el payback actual, la política no se alcanza mediante abono.',
     soloCredito: 'Aplica solo a la modalidad Crédito bancario.',
   },
   alertas: 'Alertas',
+  // KAI-42 (aprobado 2026-09-27): alertas que dependen del cálculo y mensaje positivo del crédito.
+  alertasOperacion: {
+    creditoFueraDelContrato: (mesCredito: number, mesContrato: number, saldo: string) =>
+      `Por contrato, el crédito debe quedar pagado antes de terminar el contrato. Con este plan termina en el mes ${mesCredito} (contrato: mes ${mesContrato}) y al terminar el contrato quedan ${saldo} de capital por pagar.`,
+    abonoNecesario: (porcentaje: string, monto: string, mesInicio: number, mesContrato: number) =>
+      `Se necesita un abono de al menos ${porcentaje} de la cuota (${monto}/mes) desde el mes ${mesInicio}, o un plazo de hasta ${mesContrato} meses.`,
+    abonoNoAlcanza: (maximo: string, mesInicio: number, mesContrato: number) =>
+      `Ningún abono dentro del máximo de ${maximo} lo logra desde el mes ${mesInicio}: reduce el plazo del crédito a ${mesContrato} meses o menos, o adelanta el mes de inicio del abono.`,
+    cajaNegativa: (monto: string) =>
+      `Al cierre del contrato la caja de la operación queda en ${monto}: lo pagado al banco y los costos superan el ingreso operativo de Humania. Esa diferencia debe cubrirse con recursos propios.`,
+    pagoMayorQueIngreso: (pago: string, ingreso: string) => `El pago mensual al banco (${pago}) supera el ingreso operativo mensual de Humania (${ingreso}).`,
+    perdida: (monto: string) => `La operación cierra el contrato con pérdida: el resultado neto (vista de rentabilidad) es ${monto}.`,
+    creditoPagadoAntes: (mesCredito: number, mesesAntes: number) =>
+      `El crédito queda pagado en el mes ${mesCredito}, ${mesesAntes} ${mesesAntes === 1 ? 'mes' : 'meses'} antes de terminar el contrato: desde entonces no hay pago al banco.`,
+    ahorroIntereses: (monto: string) => `Ahorro en intereses por el abono: ${monto}.`,
+  },
   paybackNoAlcanzadoReal: 'No se alcanza dentro del contrato',
   paybackNoAlcanzadoExtrapolado: 'No se alcanza en el horizonte simulado',
   equivalencia: (semana: number, meses: string) => `Semana ${semana} (≈ ${meses} meses)`,
@@ -213,8 +234,10 @@ export const TEXTOS_SIMULACION_ABONO = {
 } as const
 
 /** Razón de negocio de cada incumplimiento, con los textos aprobados. */
-export function textoIncumplimiento(i: Incumplimiento, formatearPct: (v: number) => string): string {
+export function textoIncumplimiento(i: Incumplimiento, formatearPct: (v: number) => string, mesContrato = 0): string {
   switch (i.tipo) {
+    case 'CREDITO_DESPUES_DEL_CONTRATO':
+      return TEXTOS_APROBADOS.razones.creditoDespuesDelContrato(i.mesCredito, mesContrato)
     case 'ROI_BAJO_MINIMO':
       return TEXTOS_APROBADOS.razones.roiBajoMinimo(formatearPct(i.roi), formatearPct(i.roiMinimo))
     case 'PAYBACK_SOBRE_MAXIMO':
