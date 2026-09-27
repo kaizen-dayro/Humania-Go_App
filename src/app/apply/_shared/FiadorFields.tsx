@@ -36,7 +36,7 @@ export function FiadorFields({
       <div className="grid gap-6">
         <div className="space-y-2">
           <Label className="text-humania-gray font-medium">Nombre Completo del Fiador</Label>
-          <Input name="fiador_nombre" maxLength={111} value={values.fiador_nombre} onChange={onChange} placeholder="Ej. Maria Fernández" className={inputClass('fiador_nombre', errors)} />
+          <Input name="fiador_nombre" maxLength={60} value={values.fiador_nombre} onChange={onChange} placeholder="Ej. Maria Fernández" className={inputClass('fiador_nombre', errors)} />
           <ErrorMsg name="fiador_nombre" errors={errors} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
