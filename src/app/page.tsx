@@ -181,8 +181,8 @@ export default async function Home() {
                 <div className="space-y-10">
                   {[
                     { step: '01', title: 'Aplica a la oportunidad', desc: 'Selecciona un activo e ingresa tus datos. Nuestro proceso evalúa objetivamente a cada candidato.' },
-                    { step: '02', title: 'Verificación de Perfil', desc: 'Confirmamos tus referencias, capacidad de tu fiador solidario y antecedentes de tránsito.' },
-                    { step: '03', title: 'Entrevista Personal', desc: 'Un espacio para alinear valores y garantizar el entendimiento del modelo Humania Go.' },
+                    { step: '02', title: 'Entrevista Personal', desc: 'Revisamos tus antecedentes de tránsito y te entrevistamos: un espacio para alinear valores y garantizar el entendimiento del modelo Humania Go.' },
+                    { step: '03', title: 'Verificación de Perfil', desc: 'Después de la entrevista registras tu fiador solidario y tus referencias. Confirmamos tus referencias y la capacidad de tu fiador.' },
                     { step: '04', title: 'Firma y Asignación', desc: 'Al ser aprobado, firmas el acuerdo y recibes la llave de tu nueva herramienta de progreso.' }
                   ].map((item) => (
                     <div key={item.step} className="flex gap-6 group">
