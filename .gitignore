@@ -14,6 +14,7 @@
 /coverage
 /.verificacion-presupuesto
 /.verificacion-seguros
+/.verificacion-brain
 
 # next.js
 /.next/

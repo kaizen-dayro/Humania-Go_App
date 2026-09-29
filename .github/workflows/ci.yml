@@ -48,6 +48,13 @@ jobs:
       - name: Verificaciones financieras (KAI-29) -- bloqueante
         run: npm run verificar:financiero
 
+      # Contrato del Humania WhatsApp Brain (KAI-44): pruebas del formato, la exposicion
+      # y el versionado, y guardia que impide contenido real del Brain o imports
+      # prohibidos en este repositorio publico. Bloqueante. Va dentro de este mismo
+      # job por la misma razon que el paso financiero: no cambiar el nombre del check.
+      - name: Verificacion del Brain (KAI-44) -- bloqueante
+        run: npm run verificar:brain
+
       - name: Build (incluye tsc) -- bloqueante
         run: npm run build
         env:

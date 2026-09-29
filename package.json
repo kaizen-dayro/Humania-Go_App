@@ -10,7 +10,9 @@
     "verificar:presupuesto": "tsc -p src/lib/domain/presupuesto/tsconfig.verificacion.json && node .verificacion-presupuesto/presupuesto/verificacion.js && node .verificacion-presupuesto/presupuesto/verificacionModeloVigente.js && node .verificacion-presupuesto/presupuesto/verificacionPresupuestosGuardados.js && node .verificacion-presupuesto/presupuesto/verificacionPolitica.js && node .verificacion-presupuesto/presupuesto/verificacionAbonoMinimo.js && node .verificacion-presupuesto/presupuesto/verificacionVistas.js && node .verificacion-presupuesto/presupuesto/verificacionSimulacionManual.js && node .verificacion-presupuesto/presupuesto/verificacionSeguroDigitado.js && node .verificacion-presupuesto/presupuesto/verificacionAlertasContrato.js && node .verificacion-presupuesto/presupuesto/verificacionGananciaCaja.js",
     "verificar:seguros": "tsc -p src/lib/domain/seguros/tsconfig.verificacion.json && node .verificacion-seguros/verificacion.js",
     "verificar:linea-base": "tsc -p src/lib/domain/presupuesto/tsconfig.verificacion.json && node .verificacion-presupuesto/presupuesto/verificacionLineaBase.js",
-    "verificar:financiero": "npm run verificar:presupuesto && npm run verificar:seguros && node .verificacion-presupuesto/presupuesto/verificacionLineaBase.js"
+    "verificar:financiero": "npm run verificar:presupuesto && npm run verificar:seguros && node .verificacion-presupuesto/presupuesto/verificacionLineaBase.js",
+    "verificar:brain": "tsc -p src/lib/domain/brain/tsconfig.verificacion.json && node .verificacion-brain/verificacionBrain.js && node .verificacion-brain/verificacionRepositorio.js",
+    "brain:validar": "tsc -p src/lib/domain/brain/tsconfig.verificacion.json && node .verificacion-brain/validarContenido.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
