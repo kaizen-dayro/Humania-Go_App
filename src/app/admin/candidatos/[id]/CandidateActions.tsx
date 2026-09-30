@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { bulkChangeCandidateState, continuarProcesoComparendos, descartarPorComparendos } from '@/app/admin/actions'
+import { bulkChangeCandidateState, continuarProcesoComparendos, descartarPorComparendos, reabrirDescarteManual } from '@/app/admin/actions'
 import { MotivoModal } from './MotivoModal'
 
 const NOTA_SUGERIDA_DESCARTE_COMPARENDOS = 'Descartado tras revisión manual de comparendos.'
@@ -16,6 +16,7 @@ export function CandidateActions({
   visitaDomiciliariaNoApta,
   puedeDesistirDesdeSeleccionado = false,
   comparendosPendiente = false,
+  reabrible = false,
 }: {
   candidatoId: string
   currentState: string
@@ -25,11 +26,14 @@ export function CandidateActions({
   visitaDomiciliariaNoApta: boolean
   puedeDesistirDesdeSeleccionado?: boolean
   comparendosPendiente?: boolean
+  /** Reapertura de descartes manuales (00078): lo decide la RPC obtener_reapertura_descarte. */
+  reabrible?: boolean
 }) {
   const [loading, setLoading] = useState(false)
   const [pendingAction, setPendingAction] = useState<{ newState: string; description: string } | null>(null)
   const [continuarOpen, setContinuarOpen] = useState(false)
   const [descartarComparendosOpen, setDescartarComparendosOpen] = useState(false)
+  const [reabrirOpen, setReabrirOpen] = useState(false)
 
   const handleAction = (newState: string, description: string) => {
     if (newState === 'SELECCIONADO' && !evaluacionCompleta) {
@@ -85,6 +89,17 @@ export function CandidateActions({
     setDescartarComparendosOpen(false)
   }
 
+  const handleConfirmReabrir = async (motivo: string) => {
+    setLoading(true)
+    const res = await reabrirDescarteManual(candidatoId, motivo)
+    setLoading(false)
+    if (res.error) {
+      alert(res.error)
+      return
+    }
+    setReabrirOpen(false)
+  }
+
   return (
     <>
       <MotivoModal
@@ -129,7 +144,35 @@ export function CandidateActions({
         initialValue={NOTA_SUGERIDA_DESCARTE_COMPARENDOS}
       />
 
-      {comparendosPendiente ? (
+      {/* Reapertura de descartes manuales (00078). Textos aprobados
+          literalmente por Dayro (spec 4.5); el botón de confirmación reutiliza
+          el texto aprobado del botón. Motivo con las mismas reglas del cambio
+          de estado genérico. */}
+      <MotivoModal
+        open={reabrirOpen}
+        onOpenChange={setReabrirOpen}
+        title="Reabrir descarte manual"
+        description="El candidato volverá a Revisión Preliminar. El descarte original y su historial se conservan."
+        confirmLabel="Reabrir descarte"
+        loading={loading}
+        onConfirm={handleConfirmReabrir}
+      />
+
+      {currentState === 'DESCARTADO' ? (
+        // DESCARTADO sigue siendo terminal para todas las demás acciones; la
+        // única salida es la reapertura, y solo si la RPC la permite.
+        reabrible ? (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => setReabrirOpen(true)}
+              disabled={loading}
+              className="bg-humania-blue hover:bg-humania-blue/90"
+            >
+              Reabrir descarte
+            </Button>
+          </div>
+        ) : null
+      ) : comparendosPendiente ? (
         // KAI-38: mientras la revisión de comparendos está pendiente, no
         // se muestra el botón genérico "Descartar candidato" ni "Pasar a
         // entrevista" (ambos rechazados de todas formas por
