@@ -79,6 +79,8 @@ const RESULTADO_LABELS: Record<string, string> = {
   POTENCIALMENTE_ELEGIBLE: 'Potencialmente Elegible',
   REPOSTULADO: 'Repostulado',
   ELEGIBLE_CONFIRMADO: 'Elegible Confirmado',
+  // Reapertura de descartes manuales (00078); texto aprobado por Dayro (spec 4.5).
+  REABIERTO: 'Reabierto',
 }
 
 export function DescartadosHistorialTable({ historial }: { historial: HistorialRow[] }) {

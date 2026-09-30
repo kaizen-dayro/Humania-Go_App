@@ -1107,6 +1107,39 @@ export async function descartarPorComparendos(candidatoId: string, motivo: strin
   return { success: true }
 }
 
+/**
+ * Reapertura de descartes manuales (KAI-113/KAI-116, migración 00078):
+ * devuelve a REVISION_PRELIMINAR un candidato DESCARTADO cuyo descarte
+ * MANUAL está confirmado. Toda la regla (permiso, causal, una reapertura
+ * por evento, enlace de la Parte 2) vive en la RPC reabrir_descarte_manual;
+ * esta acción no decide nada. Deliberadamente SIN correo al candidato
+ * (decisión D5: RR. HH. lo contacta).
+ */
+export async function reabrirDescarteManual(candidatoId: string, motivo: string) {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'No autorizado' }
+
+  if (!motivo || !motivo.trim()) {
+    return { success: false, error: 'El motivo es obligatorio.' }
+  }
+
+  const { error } = await supabase.rpc('reabrir_descarte_manual', {
+    p_candidato_id: candidatoId,
+    p_motivo: motivo
+  })
+
+  if (error) {
+    console.error('Error en reabrir_descarte_manual:', error)
+    return { success: false, error: error.message || 'Error al reabrir el descarte.' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  revalidatePath('/admin/candidatos')
+  return { success: true }
+}
+
 export async function updateContractStatus(
   candidatoId: string,
   nuevoEstatus: string,

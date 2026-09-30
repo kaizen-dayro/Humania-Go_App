@@ -148,6 +148,16 @@ export default async function CandidatoDetail({ params, searchParams }: { params
 
   const fails = evaluations.filter(e => e.status === 'FAIL')
 
+  // Reapertura de descartes manuales (00078): la RPC decide si este
+  // candidato es reabrible (causal MANUAL confirmada, una vez por evento);
+  // la interfaz solo muestra u oculta el botón. Solo aplica a DESCARTADO.
+  let reabrible = false
+  if (candidato.estado === 'DESCARTADO') {
+    const { data: reapertura, error: reaperturaError } = await supabase.rpc('obtener_reapertura_descarte', { p_candidato_id: candidato.id })
+    if (reaperturaError) console.error('Error en obtener_reapertura_descarte:', reaperturaError)
+    reabrible = (reapertura as { reabrible?: boolean } | null)?.reabrible === true
+  }
+
   let activosParaAsignar: any[] = []
   if (candidato.estado === 'SELECCIONADO' && !candidato.estatus_contractual) {
     const { data: actDisp } = await supabase.from('activos')
@@ -183,6 +193,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
               visitaDomiciliariaNoApta={visitaDomiciliariaEsNoApta(candidato.candidatos_evaluacion)}
               puedeDesistirDesdeSeleccionado={!candidato.estatus_contractual}
               comparendosPendiente={candidato.comparendos_requiere_revision && !candidato.comparendos_revision_resultado}
+              reabrible={reabrible}
             />
           </div>
         </div>
