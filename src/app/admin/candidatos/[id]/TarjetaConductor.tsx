@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { fechaHoyBogota } from '@/lib/format'
 import { MENSAJES_ETAPA, fechaEnPalabras, type AvanceConductor } from '@/lib/domain/contrato/avance'
 import { CarroIlustrado } from './CarroIlustrado'
 
@@ -100,7 +101,7 @@ export function TarjetaConductor({
       const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
       if (!blob) throw new Error('El navegador no pudo generar el PNG.')
       const enlace = document.createElement('a')
-      const fecha = new Date().toISOString().slice(0, 10)
+      const fecha = fechaHoyBogota()
       const slug = nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
       enlace.download = `camino-${slug || 'conductor'}-${fecha}.png`
       enlace.href = URL.createObjectURL(blob)

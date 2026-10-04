@@ -13,8 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { createClient } from '@/utils/supabase/client'
-import { formatearFechaAdmin, formatearSoloFecha } from '@/lib/format'
-import { fechaBogota } from '@/lib/domain/contrato/plazo'
+import { fechaHoyBogota, formatearFechaAdmin, formatearSoloFecha } from '@/lib/format'
 import {
   registrarDeposito,
   corregirDeposito,
@@ -29,11 +28,7 @@ const TAMANO_MAXIMO = 5 * 1024 * 1024 // 5MB, igual que el bucket pagos-evidenci
 
 type Comprobante = DepositoContrato['evidencia'][number]
 
-// Fecha de hoy en Bogotá (YYYY-MM-DD). `toISOString()` daría la fecha UTC,
-// que después de las 19:00 de Bogotá ya es el día siguiente.
-function hoy() {
-  return fechaBogota(new Date().toISOString()) ?? new Date().toISOString().slice(0, 10)
-}
+const hoy = () => fechaHoyBogota()
 
 export function DepositoInicialSection({
   candidatoId,

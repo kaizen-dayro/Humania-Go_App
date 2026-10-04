@@ -2,13 +2,14 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 import { Users, Car, CheckCircle2, AlertTriangle, UserX, ShieldAlert, FileWarning, History } from 'lucide-react'
 import Link from 'next/link'
+import { fechaHoyBogota } from '@/lib/format'
 
 // Fuera del componente a propósito: llamar Date.now() directamente dentro
 // del cuerpo de un componente dispara react-hooks/purity ("impure
 // function during render") -- en una función auxiliar normal (no un
 // componente) esa regla no aplica.
 function filtroActivosConDocumentosPorVencer(): string {
-  const en30Dias = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const en30Dias = fechaHoyBogota(30)
   return `vencimiento_tecnomecanica.lte.${en30Dias},vencimiento_soat.lte.${en30Dias},vencimiento_impuestos.lte.${en30Dias}`
 }
 
