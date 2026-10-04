@@ -7,6 +7,7 @@
 
 import assert from 'node:assert/strict'
 import { calcularPlazo, fechaBogota, sumarDias, type PagoParaPlazo } from './plazo'
+import { MENSAJES_ETAPA, calcularAvanceConductor, calcularRacha, etapaPorOrdinarias, fechaEnPalabras } from './avance'
 
 let casos = 0
 function verificar(nombre: string, fn: () => void) {
@@ -89,6 +90,76 @@ verificar('9.2: las semanas no registradas (huecos) no alargan el plazo', () => 
 verificar('sumarDias cruza meses y años bisiestos sin desfase', () => {
   assert.equal(sumarDias('2028-02-27', 2), '2028-02-29')
   assert.equal(sumarDias('2026-12-31', 1), '2027-01-01')
+})
+
+// ---------------------------------------------------------------------------
+// KAI-125 — Avance del conductor (SDD `progreso-conductor`, AC-03, AC-04, AC-09).
+
+function normales(n: number): PagoParaPlazo[] {
+  return Array.from({ length: n }, (_, i) => ({ numero_semana: i + 1, tipo_pago: 'NORMAL' as const }))
+}
+
+verificar('KAI-125 AC-03: 152 pactadas y 40 NORMAL = 26 %, faltan 112 semanas, unos 26 meses', () => {
+  const a = calcularAvanceConductor({ semanasPactadas: 152, fechaAsignacion: ENTREGA, pagos: normales(40) })
+  assert.equal(a.porcentaje, 26)
+  assert.equal(a.plazo.restantes, 112)
+  assert.equal(a.mesesAproximados, 26)
+})
+
+verificar('KAI-125 AC-04: hito de la semana 78 en 78/152 y alcanzado con 78 ordinarias', () => {
+  const antes = calcularAvanceConductor({ semanasPactadas: 152, fechaAsignacion: ENTREGA, pagos: normales(77) })
+  assert.ok(antes.hito78 && Math.abs(antes.hito78.posicion - 78 / 152) < 1e-9)
+  assert.equal(antes.hito78?.alcanzado, false)
+  const despues = calcularAvanceConductor({ semanasPactadas: 152, fechaAsignacion: ENTREGA, pagos: normales(78) })
+  assert.equal(despues.hito78?.alcanzado, true)
+  assert.equal(calcularAvanceConductor({ semanasPactadas: 60, fechaAsignacion: ENTREGA, pagos: [] }).hito78, null)
+})
+
+verificar('KAI-125 AC-09: mensajes en los umbrales 38/39, 77/78 y al completar las pactadas', () => {
+  const etapa = (n: number) => calcularAvanceConductor({ semanasPactadas: 152, fechaAsignacion: ENTREGA, pagos: normales(n) }).etapa
+  assert.equal(etapa(0), 'INICIO')
+  assert.equal(etapa(38), 'INICIO')
+  assert.equal(etapa(39), 'MITAD')
+  assert.equal(etapa(77), 'MITAD')
+  assert.equal(etapa(78), 'OPCION')
+  assert.equal(etapa(151), 'OPCION')
+  assert.equal(etapa(152), 'COMPLETO')
+  assert.equal(MENSAJES_ETAPA.COMPLETO, 'Tu carro ya es tuyo, ahora falta realizar el traspaso.')
+})
+
+verificar('KAI-125: el avance tiene tope de 100 % y las aplazatorias no cuentan como avance', () => {
+  const a = calcularAvanceConductor({ semanasPactadas: 10, fechaAsignacion: ENTREGA, pagos: normales(12) })
+  assert.equal(a.porcentaje, 100)
+  const b = calcularAvanceConductor({ semanasPactadas: 100, fechaAsignacion: ENTREGA, pagos: semanas('NORMAL', 'APLAZATORIA', 'NO_PAGO', 'NORMAL') })
+  assert.equal(b.porcentaje, 2)
+})
+
+verificar('KAI-125: racha = NORMAL consecutivas desde la última semana registrada', () => {
+  assert.equal(calcularRacha(semanas('NORMAL', 'NORMAL', 'APLAZATORIA', 'NORMAL', 'NORMAL', 'NORMAL')), 3)
+  assert.equal(calcularRacha(semanas('NORMAL', 'NO_PAGO')), 0)
+  assert.equal(calcularRacha([]), 0)
+  // Un hueco (semana sin registrar) corta la racha.
+  assert.equal(calcularRacha([{ numero_semana: 1, tipo_pago: 'NORMAL' }, { numero_semana: 3, tipo_pago: 'NORMAL' }]), 1)
+})
+
+verificar('KAI-125: cuadrícula = una entrada por semana del plazo ajustado', () => {
+  const a = calcularAvanceConductor({ semanasPactadas: 5, fechaAsignacion: ENTREGA, pagos: semanas('NORMAL', 'APLAZATORIA') })
+  assert.deepEqual(a.semanas, ['NORMAL', 'APLAZATORIA', 'POR_RECORRER', 'POR_RECORRER', 'POR_RECORRER', 'POR_RECORRER'])
+})
+
+verificar('KAI-125 AC-08: sin semanas pactadas no hay avance (solo racha)', () => {
+  const a = calcularAvanceConductor({ semanasPactadas: null, fechaAsignacion: ENTREGA, pagos: normales(3) })
+  assert.equal(a.avance, null)
+  assert.equal(a.etapa, null)
+  assert.deepEqual(a.semanas, [])
+  assert.equal(a.racha, 3)
+})
+
+verificar('KAI-125: fecha en palabras para la tarjeta del conductor', () => {
+  assert.equal(fechaEnPalabras('2029-10-09'), 'octubre de 2029')
+  assert.equal(fechaEnPalabras('2027-01-31'), 'enero de 2027')
+  assert.equal(fechaEnPalabras(null), null)
+  assert.equal(etapaPorOrdinarias(60, 60), 'COMPLETO')
 })
 
 console.log(`\n${casos} casos del plazo del contrato verificados.`)

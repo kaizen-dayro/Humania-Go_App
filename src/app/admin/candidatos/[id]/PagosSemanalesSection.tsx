@@ -8,8 +8,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { createClient } from '@/utils/supabase/client'
 import { formatearFechaAdmin, formatearSoloFecha } from '@/lib/format'
-import { calcularPlazo } from '@/lib/domain/contrato/plazo'
+import { calcularAvanceConductor } from '@/lib/domain/contrato/avance'
 import { DepositoInicialSection } from './DepositoInicialSection'
+import { ProgresoConductor } from './ProgresoConductor'
 import {
   actualizarTerminosContrato,
   actualizarSemanasPactadas,
@@ -139,6 +140,9 @@ export function PagosSemanalesSection({
   esSuperAdmin,
   fechaInicioManualInicial,
   semanasPactadasInicial,
+  nombreConductor,
+  vehiculo,
+  fotoVehiculoUrl,
 }: {
   candidatoId: string
   assignmentId: string
@@ -149,6 +153,10 @@ export function PagosSemanalesSection({
   esSuperAdmin: boolean
   fechaInicioManualInicial: string | null
   semanasPactadasInicial: number | null
+  /** KAI-125: primer nombre del conductor, vehículo ("Marca Modelo · PLACA") y foto pública. */
+  nombreConductor: string
+  vehiculo: string
+  fotoVehiculoUrl: string | null
 }) {
   const [pagos, setPagos] = useState<Pago[]>([])
   const [loading, setLoading] = useState(true)
@@ -498,7 +506,9 @@ export function PagosSemanalesSection({
   }
 
   const elegibilidadAbono = calcularElegibilidadAbono(fechaAsignacion, pagos, fechaInicioManual)
-  const plazo = calcularPlazo({ semanasPactadas: semanasPactadasGuardadas, fechaAsignacion, pagos })
+  // KAI-125: el avance incluye el plazo de KAI-121 (una sola fuente para ambos bloques).
+  const avance = calcularAvanceConductor({ semanasPactadas: semanasPactadasGuardadas, fechaAsignacion, pagos })
+  const plazo = avance.plazo
 
   return (
     <div className="space-y-6">
@@ -508,6 +518,15 @@ export function PagosSemanalesSection({
           {error}
         </div>
       )}
+
+      {/* PROGRESO DEL CONDUCTOR (KAI-125) */}
+      <ProgresoConductor
+        nombre={nombreConductor}
+        vehiculo={vehiculo}
+        fotoUrl={fotoVehiculoUrl}
+        fechaAsignacion={fechaAsignacion}
+        avance={avance}
+      />
 
       {/* TERMINOS DEL CONTRATO */}
       <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-5 space-y-3">
