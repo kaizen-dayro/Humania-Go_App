@@ -137,7 +137,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
   const { observaciones } = await getCandidatoObservaciones(resolvedParams.id)
   const { data: ultimaAsignacion } = await supabase
     .from('asset_assignment_history')
-    .select('id, fecha_asignacion, fecha_liberacion, cuota_semanal_acordada, cuota_aplazatoria_acordada, abonos_extraordinarios_fecha_inicio_manual')
+    .select('id, fecha_asignacion, fecha_liberacion, cuota_semanal_acordada, cuota_aplazatoria_acordada, abonos_extraordinarios_fecha_inicio_manual, semanas_pactadas')
     .eq('candidato_id', resolvedParams.id)
     .order('fecha_asignacion', { ascending: false })
     .limit(1)
@@ -521,6 +521,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
                 soloLectura={candidato.estatus_contractual !== 'ACTIVO'}
                 esSuperAdmin={esSuperAdmin}
                 fechaInicioManualInicial={ultimaAsignacion.abonos_extraordinarios_fecha_inicio_manual}
+                semanasPactadasInicial={ultimaAsignacion.semanas_pactadas}
               />
             </CollapsibleCard>
           )}

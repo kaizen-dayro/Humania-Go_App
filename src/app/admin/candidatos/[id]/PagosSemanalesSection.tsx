@@ -8,8 +8,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { createClient } from '@/utils/supabase/client'
 import { formatearFechaAdmin, formatearSoloFecha } from '@/lib/format'
+import { calcularPlazo } from '@/lib/domain/contrato/plazo'
+import { DepositoInicialSection } from './DepositoInicialSection'
 import {
   actualizarTerminosContrato,
+  actualizarSemanasPactadas,
   registrarPagoSemanal,
   corregirPagoSemanal,
   registrarPagoEvidencia,
@@ -91,10 +94,10 @@ function semanaSugerida(fechaAsignacion: string): number {
 
 /**
  * Elegibilidad para Abonos Extraordinarios (spec.md Sección 12.2.1 y
- * 12.4, CERRADAS 2026-09-13): con `fechaInicioManual` en null, sigue
- * siendo 12 meses calendario desde fecha_asignacion; con valor, esa
- * fecha exacta REEMPLAZA (no se suma a) el cálculo de 12 meses -- mismo
- * COALESCE que el RPC. Además, siempre 0 NO_PAGO en las primeras 52
+ * 12.4, CERRADAS 2026-09-13; plazo automático a 18 meses desde KAI-123,
+ * 03-10-2026): con `fechaInicioManual` en null, son 18 meses calendario
+ * desde fecha_asignacion; con valor, esa fecha exacta REEMPLAZA (no se
+ * suma a) el cálculo automático -- mismo COALESCE que el RPC (00081). Además, siempre 0 NO_PAGO en las primeras 52
  * semanas (APLAZATORIA no cuenta como incumplimiento, y esto no cambia
  * con la fecha manual). Este cálculo es solo para deshabilitar el
  * formulario y mostrar el motivo con antelación -- el RPC repite la
@@ -106,14 +109,14 @@ function calcularElegibilidadAbono(fechaAsignacion: string, pagos: Pago[], fecha
     fechaElegible = new Date(fechaInicioManual)
   } else {
     fechaElegible = new Date(fechaAsignacion)
-    fechaElegible.setMonth(fechaElegible.getMonth() + 12)
+    fechaElegible.setMonth(fechaElegible.getMonth() + 18)
   }
   if (Date.now() < fechaElegible.getTime()) {
     return {
       elegible: false,
       motivo: fechaInicioManual
         ? `El conductor no es elegible para abonos extraordinarios todavía (fecha fijada manualmente: ${formatearSoloFecha(fechaInicioManual)}).`
-        : `El conductor debe cumplir 12 meses desde la asignación del activo para poder registrar abonos extraordinarios (elegible desde ${formatearFechaAdmin(fechaElegible.toISOString())}).`,
+        : `El conductor debe cumplir 18 meses desde la asignación del activo para poder registrar abonos extraordinarios (elegible desde ${formatearFechaAdmin(fechaElegible.toISOString())}).`,
     }
   }
   const noPagoPrimerAno = pagos.filter(p => p.numero_semana <= 52 && p.tipo_pago === 'NO_PAGO').length
@@ -135,6 +138,7 @@ export function PagosSemanalesSection({
   soloLectura,
   esSuperAdmin,
   fechaInicioManualInicial,
+  semanasPactadasInicial,
 }: {
   candidatoId: string
   assignmentId: string
@@ -144,6 +148,7 @@ export function PagosSemanalesSection({
   soloLectura: boolean
   esSuperAdmin: boolean
   fechaInicioManualInicial: string | null
+  semanasPactadasInicial: number | null
 }) {
   const [pagos, setPagos] = useState<Pago[]>([])
   const [loading, setLoading] = useState(true)
@@ -151,6 +156,10 @@ export function PagosSemanalesSection({
 
   const [cuotaSemanal, setCuotaSemanal] = useState(cuotaSemanalInicial != null ? String(cuotaSemanalInicial) : '')
   const [cuotaAplazatoria, setCuotaAplazatoria] = useState(cuotaAplazatoriaInicial != null ? String(cuotaAplazatoriaInicial) : '')
+  // KAI-121: semanas pactadas (digitadas, D1). `semanasPactadasGuardadas`
+  // es el valor vigente en BD, que es el que usa el resumen del plazo.
+  const [semanasPactadas, setSemanasPactadas] = useState(semanasPactadasInicial != null ? String(semanasPactadasInicial) : '')
+  const [semanasPactadasGuardadas, setSemanasPactadasGuardadas] = useState<number | null>(semanasPactadasInicial)
   const [guardandoTerminos, setGuardandoTerminos] = useState(false)
   const [terminosGuardados, setTerminosGuardados] = useState(false)
 
@@ -240,12 +249,25 @@ export function PagosSemanalesSection({
     setError('')
     const semanal = cuotaSemanal === '' ? null : Number(cuotaSemanal)
     const aplazatoria = cuotaAplazatoria === '' ? null : Number(cuotaAplazatoria)
+    const pactadas = semanasPactadas === '' ? null : Number(semanasPactadas)
+    if (pactadas !== null && (!Number.isInteger(pactadas) || pactadas < 1)) {
+      setGuardandoTerminos(false)
+      setError('Las semanas pactadas deben ser un número entero mayor o igual a 1.')
+      return
+    }
     const res = await actualizarTerminosContrato(candidatoId, assignmentId, semanal, aplazatoria)
-    setGuardandoTerminos(false)
     if (!res.success) {
+      setGuardandoTerminos(false)
       setError(res.error || 'No se pudieron guardar los términos del contrato.')
       return
     }
+    const resPactadas = await actualizarSemanasPactadas(candidatoId, assignmentId, pactadas)
+    setGuardandoTerminos(false)
+    if (!resPactadas.success) {
+      setError(resPactadas.error || 'No se pudieron guardar las semanas pactadas.')
+      return
+    }
+    setSemanasPactadasGuardadas(pactadas)
     setTerminosGuardados(true)
   }
 
@@ -476,6 +498,7 @@ export function PagosSemanalesSection({
   }
 
   const elegibilidadAbono = calcularElegibilidadAbono(fechaAsignacion, pagos, fechaInicioManual)
+  const plazo = calcularPlazo({ semanasPactadas: semanasPactadasGuardadas, fechaAsignacion, pagos })
 
   return (
     <div className="space-y-6">
@@ -490,7 +513,7 @@ export function PagosSemanalesSection({
       <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-5 space-y-3">
         <h4 className="text-sm font-bold text-humania-gray/50 uppercase tracking-widest">Términos del contrato</h4>
         <p className="text-xs text-humania-gray/70">La cuota semanal y la de aplazatoria varían por contrato — se definen aquí, según el activo alquilado con opción de compra.</p>
-        <div className="grid sm:grid-cols-3 gap-4 items-end">
+        <div className="grid sm:grid-cols-4 gap-4 items-end">
           <div className="space-y-1">
             <label className="text-xs font-medium text-humania-gray">Cuota semanal acordada</label>
             <Input
@@ -513,6 +536,18 @@ export function PagosSemanalesSection({
               placeholder="Ej. 200000"
             />
           </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-humania-gray">Semanas pactadas</label>
+            <Input
+              type="number"
+              min="1"
+              step="1"
+              disabled={soloLectura}
+              value={semanasPactadas}
+              onChange={(e) => setSemanasPactadas(e.target.value)}
+              placeholder="Ej. 152"
+            />
+          </div>
           {!soloLectura && (
             <div>
               <Button type="button" onClick={guardarTerminos} disabled={guardandoTerminos} className="rounded-none">
@@ -523,6 +558,37 @@ export function PagosSemanalesSection({
           )}
         </div>
       </div>
+
+      {/* PLAZO DEL CONTRATO (KAI-121) */}
+      <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-5 space-y-3">
+        <h4 className="text-sm font-bold text-humania-gray/50 uppercase tracking-widest">Plazo del contrato</h4>
+        <p className="text-xs text-humania-gray/70">Cada semana aplazatoria o sin pago alarga el plazo una semana.</p>
+        {plazo.plazoAjustado === null && (
+          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            Define las semanas pactadas en Términos del contrato para calcular el plazo.
+          </p>
+        )}
+        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3 text-sm">
+          {[
+            ['Semanas pactadas', semanasPactadasGuardadas],
+            ['Aplazatorias registradas', plazo.aplazatorias],
+            ['Semanas sin pago registradas', plazo.sinPago],
+            ['Plazo ajustado', plazo.plazoAjustado],
+            ['Semanas ordinarias pagadas', plazo.ordinariasPagadas],
+            ['Semanas restantes', plazo.restantes],
+            ['Fecha estimada de fin', formatearSoloFecha(plazo.fechaEstimadaFin)],
+          ].map(([etiqueta, valor]) => (
+            <div key={String(etiqueta)}>
+              <dt className="text-xs font-medium text-humania-gray/60">{etiqueta}</dt>
+              <dd className="font-semibold tabular-nums text-humania-blue">{valor ?? '—'}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      {/* DEPOSITO INICIAL (KAI-122) */}
+      <DepositoInicialSection candidatoId={candidatoId} assignmentId={assignmentId} soloLectura={soloLectura} />
 
       {/* REGISTRAR PAGO NUEVO */}
       {!soloLectura && (
@@ -658,7 +724,7 @@ export function PagosSemanalesSection({
         <div>
           <h4 className="text-sm font-bold text-humania-gray/50 uppercase tracking-widest">Abonos extraordinarios</h4>
           <p className="text-xs text-humania-gray/70 mt-1">
-            Pagos voluntarios del conductor, aparte de la cuota semanal, que se aplican 100% a la adquisición del vehículo. Requiere al menos 12 meses de contrato y ningún &quot;No pago&quot; registrado en el primer año.
+            Pagos voluntarios del conductor, aparte de la cuota semanal, que se aplican 100% a la adquisición del vehículo. Requiere al menos 18 meses de contrato y ningún &quot;No pago&quot; registrado en el primer año.
           </p>
         </div>
 
@@ -733,14 +799,14 @@ export function PagosSemanalesSection({
           <div className="mt-4 pt-4 border-t border-dashed border-neutral-200 space-y-3">
             <h5 className="text-xs font-bold text-humania-blue uppercase tracking-widest">Configuración avanzada — SUPER_ADMIN</h5>
             <p className="text-xs text-humania-gray/70">
-              El plazo de espera para Abonos Extraordinarios es negociable por contrato. Por defecto son 12 meses desde la asignación del activo — aquí puedes fijar una fecha distinta para este contrato en particular.
+              El plazo de espera para Abonos Extraordinarios es negociable por contrato. Por defecto son 18 meses desde la asignación del activo — aquí puedes fijar una fecha distinta para este contrato en particular.
             </p>
             <p className="text-sm text-humania-blue">
               <span className="font-medium">Fecha vigente:</span>{' '}
               {fechaInicioManual ? (
                 <>Manual — {formatearSoloFecha(fechaInicioManual)}</>
               ) : (
-                <>Automática — 12 meses desde la asignación</>
+                <>Automática — 18 meses desde la asignación</>
               )}
               {fechaInicioManual && historialFechaInicio[0] && (
                 <span className="text-xs text-humania-gray/60"> (fijada por {historialFechaInicio[0].establecido_por_email} el {formatearFechaAdmin(historialFechaInicio[0].establecido_en)})</span>

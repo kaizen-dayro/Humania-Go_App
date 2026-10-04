@@ -12,7 +12,8 @@
     "verificar:linea-base": "tsc -p src/lib/domain/presupuesto/tsconfig.verificacion.json && node .verificacion-presupuesto/presupuesto/verificacionLineaBase.js",
     "verificar:financiero": "npm run verificar:presupuesto && npm run verificar:seguros && node .verificacion-presupuesto/presupuesto/verificacionLineaBase.js",
     "verificar:brain": "tsc -p src/lib/domain/brain/tsconfig.verificacion.json && node .verificacion-brain/verificacionBrain.js && node .verificacion-brain/verificacionRepositorio.js",
-    "brain:validar": "tsc -p src/lib/domain/brain/tsconfig.verificacion.json && node .verificacion-brain/validarContenido.js"
+    "brain:validar": "tsc -p src/lib/domain/brain/tsconfig.verificacion.json && node .verificacion-brain/validarContenido.js",
+    "verificar:contrato": "tsc -p src/lib/domain/contrato/tsconfig.verificacion.json && node .verificacion-contrato/verificacion.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

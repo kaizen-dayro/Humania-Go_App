@@ -55,6 +55,12 @@ jobs:
       - name: Verificacion del Brain (KAI-44) -- bloqueante
         run: npm run verificar:brain
 
+      # Plazo del contrato (KAI-121): plazo ajustado por aplazatorias y semanas sin
+      # pago, semanas restantes y fecha estimada de fin. Bloqueante, aprobado por
+      # Dayro el 03-10-2026. Mismo job por la misma razon: no cambiar el nombre del check.
+      - name: Verificacion del plazo del contrato (KAI-121) -- bloqueante
+        run: npm run verificar:contrato
+
       - name: Build (incluye tsc) -- bloqueante
         run: npm run build
         env:
