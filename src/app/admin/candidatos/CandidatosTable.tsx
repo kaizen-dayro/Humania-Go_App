@@ -18,7 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { BulkStatusModal } from './BulkStatusModal'
 import { Download } from 'lucide-react'
 import writeExcelFile from 'write-excel-file/universal'
-import { formatearFechaAdmin } from '@/lib/format'
+import { fechaHoyBogota, formatearFechaAdmin } from '@/lib/format'
 
 const GENEROS: Record<string, string> = {
   MASCULINO: 'Masculino',
@@ -216,7 +216,7 @@ export function CandidatosTable({
       const url = URL.createObjectURL(blob)
       const enlace = document.createElement('a')
       enlace.href = url
-      enlace.download = `candidatos_humania_go_${new Date().toISOString().slice(0, 10)}.xlsx`
+      enlace.download = `candidatos_humania_go_${fechaHoyBogota()}.xlsx`
       document.body.appendChild(enlace)
       enlace.click()
       document.body.removeChild(enlace)

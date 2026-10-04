@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { createClient } from '@/utils/supabase/client'
-import { formatearFechaAdmin, formatearSoloFecha } from '@/lib/format'
+import { fechaHoyBogota, formatearFechaAdmin, formatearSoloFecha } from '@/lib/format'
 import { calcularAvanceConductor } from '@/lib/domain/contrato/avance'
 import { DepositoInicialSection } from './DepositoInicialSection'
 import { ProgresoConductor } from './ProgresoConductor'
@@ -174,7 +174,7 @@ export function PagosSemanalesSection({
   const [numeroSemana, setNumeroSemana] = useState(() => String(semanaSugerida(fechaAsignacion)))
   const [tipoPago, setTipoPago] = useState<'NORMAL' | 'APLAZATORIA' | 'NO_PAGO'>('NORMAL')
   const [montoPagado, setMontoPagado] = useState('')
-  const [fechaPago, setFechaPago] = useState(() => new Date().toISOString().slice(0, 10))
+  const [fechaPago, setFechaPago] = useState(() => fechaHoyBogota())
   const [observaciones, setObservaciones] = useState('')
   const [registrando, setRegistrando] = useState(false)
 
@@ -195,7 +195,7 @@ export function PagosSemanalesSection({
   const [errorEliminacion, setErrorEliminacion] = useState('')
 
   const [abonos, setAbonos] = useState<Abono[]>([])
-  const [fechaAbono, setFechaAbono] = useState(() => new Date().toISOString().slice(0, 10))
+  const [fechaAbono, setFechaAbono] = useState(() => fechaHoyBogota())
   const [valorAbono, setValorAbono] = useState('')
   const [observacionesAbono, setObservacionesAbono] = useState('')
   const [registrandoAbono, setRegistrandoAbono] = useState(false)
@@ -302,7 +302,7 @@ export function PagosSemanalesSection({
     }
     setMontoPagado('')
     setObservaciones('')
-    setFechaPago(new Date().toISOString().slice(0, 10))
+    setFechaPago(fechaHoyBogota())
     setNumeroSemana(String(Number(numeroSemana) + 1))
     await cargarPagos()
   }
@@ -358,7 +358,7 @@ export function PagosSemanalesSection({
     }
     setValorAbono('')
     setObservacionesAbono('')
-    setFechaAbono(new Date().toISOString().slice(0, 10))
+    setFechaAbono(fechaHoyBogota())
     await cargarAbonos()
   }
 

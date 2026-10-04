@@ -45,3 +45,20 @@ export function formatearSoloFecha(fecha: string | null | undefined): string | n
   const [, anio, mes, dia] = match
   return `${dia}-${mes}-${anio}`
 }
+
+/**
+ * Fecha de hoy en Bogotá como `YYYY-MM-DD`, para valores por defecto de
+ * inputs `type="date"` y comparaciones con columnas `DATE`. NO usar
+ * `new Date().toISOString().slice(0, 10)`: esa es la fecha UTC, que desde
+ * las 19:00 de Bogotá (UTC-5) ya es el día siguiente. `diasDespues`
+ * desplaza la fecha sin pasar por zonas horarias.
+ */
+export function fechaHoyBogota(diasDespues = 0): string {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date())
+  const parte = (t: string) => Number(partes.find(p => p.type === t)?.value)
+  const utc = Date.UTC(parte('year'), parte('month') - 1, parte('day') + diasDespues)
+  return new Date(utc).toISOString().slice(0, 10)
+}
