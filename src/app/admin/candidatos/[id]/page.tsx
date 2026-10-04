@@ -143,6 +143,25 @@ export default async function CandidatoDetail({ params, searchParams }: { params
     .limit(1)
     .maybeSingle()
 
+  // KAI-125: modo conductor (contrato activo) y foto del vehículo para la tarjeta
+  // del conductor. Misma prioridad que el resto de la app: foto PRINCIPAL vigente en
+  // Storage > image_url del activo > image_url del modelo.
+  const modoConductor = candidato.estatus_contractual === 'ACTIVO' && !!ultimaAsignacion
+  let fotoVehiculoUrl: string | null = null
+  if (ultimaAsignacion && candidato.activo_id) {
+    const { data: activoFoto } = await supabase
+      .from('activos')
+      .select('image_url, activo_fotos(storage_path, categoria, activo), modelos_vehiculo(image_url)')
+      .eq('id', candidato.activo_id)
+      .maybeSingle()
+    const fotoPrincipal = (activoFoto?.activo_fotos as Array<{ storage_path: string; categoria: string; activo: boolean }> | null)
+      ?.find(f => f.categoria === 'PRINCIPAL' && f.activo)
+    const modeloFoto = activoFoto?.modelos_vehiculo as unknown as { image_url: string | null } | null
+    fotoVehiculoUrl = fotoPrincipal
+      ? supabase.storage.from('activo-fotos-publicas').getPublicUrl(fotoPrincipal.storage_path).data.publicUrl
+      : (activoFoto?.image_url || modeloFoto?.image_url || null)
+  }
+
   const candidatePayload = { ...candidato, fiador, referencias }
   const evaluations = evaluateCandidateRequirements(candidatePayload)
 
@@ -170,6 +189,32 @@ export default async function CandidatoDetail({ params, searchParams }: { params
   const modelo = candidato.activos?.modelos_vehiculo
   const refFamiliar = referencias?.find(r => r.tipo_referencia === 'FAMILIAR')
   const refPersonal = referencias?.find(r => r.tipo_referencia === 'PERSONAL')
+
+  // KAI-125: la tarjeta de pagos (con el progreso del conductor) se arma una vez y
+  // se ubica justo debajo del encabezado en modo conductor, abierta; en los demás
+  // casos queda en su lugar habitual y cerrada (spec R1-R3).
+  const vehiculoTexto = [
+    [modelo?.marcas_vehiculo?.nombre, modelo?.nombre].filter(Boolean).join(' '),
+    candidato.activos?.placa,
+  ].filter(Boolean).join(' · ')
+  const tarjetaPagos = ultimaAsignacion ? (
+    <CollapsibleCard title="PAGOS SEMANALES" defaultOpen={modoConductor} accent={modoConductor}>
+      <PagosSemanalesSection
+        candidatoId={candidato.id}
+        assignmentId={ultimaAsignacion.id}
+        fechaAsignacion={ultimaAsignacion.fecha_asignacion}
+        cuotaSemanalInicial={ultimaAsignacion.cuota_semanal_acordada}
+        cuotaAplazatoriaInicial={ultimaAsignacion.cuota_aplazatoria_acordada}
+        soloLectura={candidato.estatus_contractual !== 'ACTIVO'}
+        esSuperAdmin={esSuperAdmin}
+        fechaInicioManualInicial={ultimaAsignacion.abonos_extraordinarios_fecha_inicio_manual}
+        semanasPactadasInicial={ultimaAsignacion.semanas_pactadas}
+        nombreConductor={String(candidato.nombres || '').trim().split(/\s+/)[0] || 'Conductor'}
+        vehiculo={vehiculoTexto}
+        fotoVehiculoUrl={fotoVehiculoUrl}
+      />
+    </CollapsibleCard>
+  ) : null
 
   return (
     <div className="min-h-screen bg-neutral-50 font-sans pb-20">
@@ -226,6 +271,9 @@ export default async function CandidatoDetail({ params, searchParams }: { params
             )}
           </div>
         </div>
+
+        {/* KAI-125: en modo conductor los pagos van primero (CollapsibleCard trae su propio mt-6). */}
+        {modoConductor && <div className="-mt-6">{tarjetaPagos}</div>}
 
         <ObservacionesSection candidatoId={resolvedParams.id} observaciones={observaciones} />
 
@@ -510,21 +558,7 @@ export default async function CandidatoDetail({ params, searchParams }: { params
             />
           )}
 
-          {ultimaAsignacion && (
-            <CollapsibleCard title="PAGOS SEMANALES">
-              <PagosSemanalesSection
-                candidatoId={candidato.id}
-                assignmentId={ultimaAsignacion.id}
-                fechaAsignacion={ultimaAsignacion.fecha_asignacion}
-                cuotaSemanalInicial={ultimaAsignacion.cuota_semanal_acordada}
-                cuotaAplazatoriaInicial={ultimaAsignacion.cuota_aplazatoria_acordada}
-                soloLectura={candidato.estatus_contractual !== 'ACTIVO'}
-                esSuperAdmin={esSuperAdmin}
-                fechaInicioManualInicial={ultimaAsignacion.abonos_extraordinarios_fecha_inicio_manual}
-                semanasPactadasInicial={ultimaAsignacion.semanas_pactadas}
-              />
-            </CollapsibleCard>
-          )}
+          {!modoConductor && tarjetaPagos}
 
           <CollapsibleCard title="HISTORIAL DE CAMBIOS">
             {historialCambios.length === 0 ? (
