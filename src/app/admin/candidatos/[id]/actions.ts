@@ -201,8 +201,9 @@ export async function eliminarPagoEvidencia(candidatoId: string, evidenciaId: st
 /**
  * Registra un abono extraordinario nuevo. Entidad independiente de
  * pagos_semanales (KAI-30 addendum, spec.md Seccion 12) -- la RPC valida
- * la elegibilidad (12 meses desde fecha_asignacion + 0 NO_PAGO en las
- * primeras 52 semanas) como autoridad real; el mensaje de error de la
+ * la elegibilidad (18 meses desde fecha_asignacion desde KAI-123, o la
+ * fecha manual de SUPER_ADMIN, + 0 NO_PAGO en las primeras 52 semanas)
+ * como autoridad real; el mensaje de error de la
  * RPC ya es especifico, se propaga tal cual.
  */
 export async function registrarAbonoExtraordinario(
@@ -443,4 +444,274 @@ export async function getPagosSemanales(assignmentId: string) {
   }))
 
   return { success: true, pagos: resultado }
+}
+
+/**
+ * KAI-121: guarda las semanas pactadas del contrato (D1). RPC aparte de
+ * actualizar_terminos_contrato para no cambiar su firma (plan.md C.1.2).
+ * `null` = aún no definidas.
+ */
+export async function actualizarSemanasPactadas(
+  candidatoId: string,
+  assignmentId: string,
+  semanasPactadas: number | null
+) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('actualizar_semanas_pactadas', {
+    p_asset_assignment_history_id: assignmentId,
+    p_semanas_pactadas: semanasPactadas,
+  })
+
+  if (error) {
+    console.error('Error actualizando semanas pactadas:', error)
+    return { success: false, error: error.message || 'No se pudieron guardar las semanas pactadas.' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  return { success: true }
+}
+
+/**
+ * KAI-122: registra el depósito inicial del contrato (uno por contrato,
+ * D6). La RPC es la autoridad: valida valor, fecha, finalidad y el
+ * duplicado, y su mensaje se propaga tal cual.
+ */
+export async function registrarDeposito(
+  candidatoId: string,
+  assignmentId: string,
+  valor: number,
+  fechaPago: string,
+  finalidadCondiciones: string
+) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('registrar_deposito_contrato', {
+    p_asset_assignment_history_id: assignmentId,
+    p_valor: valor,
+    p_fecha_pago: fechaPago,
+    p_finalidad_condiciones: finalidadCondiciones,
+  })
+
+  if (error) {
+    console.error('Error registrando depósito:', error)
+    return { success: false, error: error.message || 'No se pudo registrar el depósito.' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  return { success: true }
+}
+
+/**
+ * KAI-122: corrige el depósito. Exige motivo; la RPC guarda el valor
+ * anterior en depositos_contrato_correcciones antes de sobrescribir.
+ */
+export async function corregirDeposito(
+  candidatoId: string,
+  depositoId: string,
+  valor: number,
+  fechaPago: string,
+  finalidadCondiciones: string,
+  motivo: string
+) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  if (!motivo || !motivo.trim()) {
+    return { success: false, error: 'Debes indicar el motivo de la corrección.' }
+  }
+
+  const { error } = await supabase.rpc('corregir_deposito_contrato', {
+    p_deposito_id: depositoId,
+    p_valor: valor,
+    p_fecha_pago: fechaPago,
+    p_finalidad_condiciones: finalidadCondiciones,
+    p_motivo: motivo.trim(),
+  })
+
+  if (error) {
+    console.error('Error corrigiendo depósito:', error)
+    return { success: false, error: error.message || 'No se pudo corregir el depósito.' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  return { success: true }
+}
+
+/**
+ * KAI-122: registra el comprobante del depósito ya subido a Storage
+ * (bucket pagos-evidencia, mismo flujo que registrarPagoEvidencia). Si el
+ * registro falla, elimina el archivo recién subido para no dejarlo
+ * huérfano y devuelve el error real.
+ */
+export async function registrarDepositoEvidencia(
+  candidatoId: string,
+  depositoId: string,
+  storagePath: string,
+  descripcion: string
+) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('registrar_deposito_evidencia', {
+    p_deposito_id: depositoId,
+    p_storage_path: storagePath,
+    p_descripcion: descripcion?.trim() || null,
+  })
+
+  if (error) {
+    console.error('Error registrando comprobante del depósito en BD, limpiando archivo huerfano en Storage:', error)
+    const { error: deleteError } = await supabase.storage.from('pagos-evidencia').remove([storagePath])
+    if (deleteError) {
+      console.error('No se pudo eliminar el archivo huerfano en Storage:', deleteError)
+    }
+    return { success: false, error: error.message || 'No se pudo registrar el comprobante.' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  return { success: true }
+}
+
+/**
+ * KAI-122: elimina (baja lógica trazable, con motivo) un comprobante del
+ * depósito -- mismo patrón que eliminarPagoEvidencia.
+ */
+export async function eliminarDepositoEvidencia(candidatoId: string, evidenciaId: string, motivo: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  if (!motivo || !motivo.trim()) {
+    return { success: false, error: 'Debes indicar el motivo de la eliminación.' }
+  }
+
+  const { data: evidencia } = await supabase.from('depositos_contrato_evidencia').select('storage_path').eq('id', evidenciaId).single()
+
+  const { error } = await supabase.rpc('eliminar_deposito_evidencia', {
+    p_evidencia_id: evidenciaId,
+    p_motivo: motivo.trim(),
+  })
+
+  if (error) {
+    console.error('Error eliminando comprobante del depósito:', error)
+    return { success: false, error: error.message || 'No se pudo eliminar el comprobante.' }
+  }
+
+  if (evidencia) {
+    const { error: removeError } = await supabase.storage.from('pagos-evidencia').remove([evidencia.storage_path])
+    if (removeError) {
+      console.error('No se pudo eliminar el archivo en Storage tras la eliminación lógica:', removeError)
+    }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  return { success: true }
+}
+
+export interface DepositoContrato {
+  id: string
+  valor: number
+  fecha_pago: string
+  finalidad_condiciones: string
+  registrado_por_email: string
+  created_at: string
+  updated_at: string
+  correcciones: Array<{
+    id: string
+    valor_anterior: number
+    fecha_pago_anterior: string
+    finalidad_condiciones_anterior: string
+    motivo_correccion: string
+    corregido_por_email: string
+    corregido_en: string
+  }>
+  evidencia: Array<{ id: string; descripcion: string | null; usuario_email: string; created_at: string; url: string | null }>
+}
+
+/**
+ * KAI-122: obtiene el depósito del contrato (o `null` si no existe), con
+ * sus correcciones y comprobantes vigentes (URLs firmadas de 300 s).
+ */
+export async function getDeposito(assignmentId: string): Promise<{ success: boolean; error?: string; deposito: DepositoContrato | null }> {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado', deposito: null }
+
+  const { data: dep, error } = await supabase
+    .from('depositos_contrato')
+    .select('id, valor, fecha_pago, finalidad_condiciones, registrado_por, created_at, updated_at')
+    .eq('asset_assignment_history_id', assignmentId)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error obteniendo depósito:', error)
+    return { success: false, error: error.message || 'No se pudo cargar el depósito.', deposito: null }
+  }
+  if (!dep) return { success: true, deposito: null }
+
+  const [{ data: correcciones }, { data: evidenciaRows }] = await Promise.all([
+    supabase
+      .from('depositos_contrato_correcciones')
+      .select('id, valor_anterior, fecha_pago_anterior, finalidad_condiciones_anterior, motivo_correccion, corregido_por, corregido_en')
+      .eq('deposito_id', dep.id)
+      .order('corregido_en', { ascending: false }),
+    supabase
+      .from('depositos_contrato_evidencia')
+      .select('id, storage_path, descripcion, usuario_id, activo, created_at')
+      .eq('deposito_id', dep.id)
+      .eq('activo', true)
+      .order('created_at', { ascending: false }),
+  ])
+
+  const serviceClient = getServiceClient()
+  const usuarioIds = [...new Set([
+    dep.registrado_por,
+    ...(correcciones || []).map(c => c.corregido_por),
+    ...(evidenciaRows || []).map(e => e.usuario_id),
+  ])]
+  const emailPorUsuario: Record<string, string> = {}
+  await Promise.all(usuarioIds.map(async (uid) => {
+    const { data } = await serviceClient.auth.admin.getUserById(uid)
+    if (data?.user?.email) emailPorUsuario[uid] = data.user.email
+  }))
+
+  const evidencia = await Promise.all((evidenciaRows || []).map(async (e) => {
+    const { data: signed } = await serviceClient.storage.from('pagos-evidencia').createSignedUrl(e.storage_path, 300)
+    return {
+      id: e.id,
+      descripcion: e.descripcion,
+      usuario_email: emailPorUsuario[e.usuario_id] || 'Administrador',
+      created_at: e.created_at,
+      url: signed?.signedUrl || null,
+    }
+  }))
+
+  return {
+    success: true,
+    deposito: {
+      id: dep.id,
+      valor: Number(dep.valor),
+      fecha_pago: dep.fecha_pago,
+      finalidad_condiciones: dep.finalidad_condiciones,
+      registrado_por_email: emailPorUsuario[dep.registrado_por] || 'Administrador',
+      created_at: dep.created_at,
+      updated_at: dep.updated_at,
+      correcciones: (correcciones || []).map(c => ({
+        id: c.id,
+        valor_anterior: Number(c.valor_anterior),
+        fecha_pago_anterior: c.fecha_pago_anterior,
+        finalidad_condiciones_anterior: c.finalidad_condiciones_anterior,
+        motivo_correccion: c.motivo_correccion,
+        corregido_por_email: emailPorUsuario[c.corregido_por] || 'Administrador',
+        corregido_en: c.corregido_en,
+      })),
+      evidencia,
+    },
+  }
 }
