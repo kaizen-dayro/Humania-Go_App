@@ -32,8 +32,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     : []
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex font-sans">
-      <AdminSidebar esSuperAdmin={esSuperAdmin} />
+    <div className="min-h-screen bg-neutral-50 flex font-sans print:bg-white">
+      {/* KAI-127: al imprimir (estado de cuenta en PDF) no salen el menú ni la cabecera. */}
+      <div className="print:hidden">
+        <AdminSidebar esSuperAdmin={esSuperAdmin} />
+      </div>
 
       {/* Contenido Principal -- pt-16 en celular deja espacio para la barra
           superior fija de AdminSidebar; md:pt-0 porque en escritorio esa
@@ -41,15 +44,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           como elemento flexible, sin él `main` no puede ser más angosto que su
           contenido más ancho (p. ej. una tabla con scroll propio), y en celular
           toda la página se desbordaba horizontalmente. */}
-      <main className="flex-1 min-w-0 md:ml-64 pt-16 md:pt-0 flex flex-col min-h-screen">
-        <header className="min-h-16 bg-white border-b border-neutral-200 flex flex-wrap items-center justify-end gap-3 px-4 py-2 md:px-8 md:py-0">
+      <main className="flex-1 min-w-0 md:ml-64 pt-16 md:pt-0 flex flex-col min-h-screen print:ml-0 print:pt-0">
+        <header className="min-h-16 bg-white border-b border-neutral-200 flex flex-wrap items-center justify-end gap-3 px-4 py-2 md:px-8 md:py-0 print:hidden">
           {esSuperAdmin && <RecuperacionNotificacion solicitudesIniciales={solicitudesRecuperacion as any} />}
           <EditarNombreButton nombreActual={caller?.nombre ?? null} correo={session.user.email!} />
           <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full text-white ${esSuperAdmin ? 'bg-humania-blue' : 'bg-neutral-500'}`}>
             {esSuperAdmin ? 'SUPER ADMIN' : 'ADMIN'}
           </span>
         </header>
-        <div className="flex-1 p-4 md:p-8">
+        <div className="flex-1 p-4 md:p-8 print:p-0">
           {children}
         </div>
       </main>

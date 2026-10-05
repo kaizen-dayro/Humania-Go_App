@@ -715,3 +715,111 @@ export async function getDeposito(assignmentId: string): Promise<{ success: bool
     },
   }
 }
+
+/**
+ * KAI-128: valores de compra del contrato (valor de venta, ahorro semanal y
+ * bono semanal) con su historial. Lectura con la sesión del administrador
+ * (RLS de solo lectura, 00082/00083).
+ */
+export type ValoresCompraHistorial = {
+  id: string
+  valor_venta_anterior: number | null
+  aporte_ahorro_semanal_anterior: number | null
+  aporte_bono_semanal_anterior: number | null
+  valor_venta_nuevo: number
+  aporte_ahorro_semanal_nuevo: number
+  aporte_bono_semanal_nuevo: number
+  motivo: string | null
+  registrado_por_email: string
+  registrado_en: string
+}
+
+export async function getValoresCompra(assignmentId: string): Promise<{
+  success: boolean
+  error?: string
+  valores: { valor_venta: number | null; aporte_ahorro_semanal: number | null; aporte_bono_semanal: number | null } | null
+  historial: ValoresCompraHistorial[]
+}> {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado', valores: null, historial: [] }
+
+  const [{ data: contrato, error: errContrato }, { data: filas, error: errHistorial }] = await Promise.all([
+    supabase
+      .from('asset_assignment_history')
+      .select('valor_venta, aporte_ahorro_semanal, aporte_bono_semanal')
+      .eq('id', assignmentId)
+      .maybeSingle(),
+    supabase
+      .from('contrato_valores_compra_historial')
+      .select('id, valor_venta_anterior, aporte_ahorro_semanal_anterior, aporte_bono_semanal_anterior, valor_venta_nuevo, aporte_ahorro_semanal_nuevo, aporte_bono_semanal_nuevo, motivo, registrado_por, registrado_en')
+      .eq('asset_assignment_history_id', assignmentId)
+      .order('registrado_en', { ascending: false }),
+  ])
+
+  const errorCarga = errContrato || errHistorial
+  if (errorCarga) {
+    console.error('Error obteniendo valores de compra:', errorCarga)
+    return { success: false, error: errorCarga.message || 'No se pudieron cargar los valores de compra.', valores: null, historial: [] }
+  }
+
+  const serviceClient = getServiceClient()
+  const emailPorUsuario: Record<string, string> = {}
+  await Promise.all([...new Set((filas || []).map(f => f.registrado_por))].map(async (uid) => {
+    const { data } = await serviceClient.auth.admin.getUserById(uid)
+    if (data?.user?.email) emailPorUsuario[uid] = data.user.email
+  }))
+
+  const num = (v: unknown) => (v === null || v === undefined ? null : Number(v))
+  return {
+    success: true,
+    valores: contrato
+      ? { valor_venta: num(contrato.valor_venta), aporte_ahorro_semanal: num(contrato.aporte_ahorro_semanal), aporte_bono_semanal: num(contrato.aporte_bono_semanal) }
+      : null,
+    historial: (filas || []).map(f => ({
+      id: f.id,
+      valor_venta_anterior: num(f.valor_venta_anterior),
+      aporte_ahorro_semanal_anterior: num(f.aporte_ahorro_semanal_anterior),
+      aporte_bono_semanal_anterior: num(f.aporte_bono_semanal_anterior),
+      valor_venta_nuevo: Number(f.valor_venta_nuevo),
+      aporte_ahorro_semanal_nuevo: Number(f.aporte_ahorro_semanal_nuevo),
+      aporte_bono_semanal_nuevo: Number(f.aporte_bono_semanal_nuevo),
+      motivo: f.motivo,
+      registrado_por_email: emailPorUsuario[f.registrado_por] || 'Administrador',
+      registrado_en: f.registrado_en,
+    })),
+  }
+}
+
+/**
+ * KAI-128: registra o cambia los valores de compra. La RPC exige motivo
+ * cuando ya había valores y deja cada guardado en el historial.
+ */
+export async function guardarValoresCompra(
+  candidatoId: string,
+  assignmentId: string,
+  valorVenta: number,
+  aporteAhorroSemanal: number,
+  aporteBonoSemanal: number,
+  motivo: string
+) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { success: false, error: 'No autorizado' }
+
+  const { error } = await supabase.rpc('guardar_valores_compra_contrato', {
+    p_asset_assignment_history_id: assignmentId,
+    p_valor_venta: valorVenta,
+    p_aporte_ahorro_semanal: aporteAhorroSemanal,
+    p_aporte_bono_semanal: aporteBonoSemanal,
+    p_motivo: motivo,
+  })
+
+  if (error) {
+    console.error('Error guardando valores de compra:', error)
+    return { success: false, error: error.message || 'No se pudieron guardar los valores de compra.' }
+  }
+
+  revalidatePath(`/admin/candidatos/${candidatoId}`)
+  return { success: true }
+}

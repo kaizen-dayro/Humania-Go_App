@@ -7,6 +7,8 @@
 
 import assert from 'node:assert/strict'
 import { calcularPlazo, fechaBogota, sumarDias, type PagoParaPlazo } from './plazo'
+import { filtrarEstadoCuenta } from './estadoCuenta'
+import { calcularCompra } from './compra'
 import { MENSAJES_ETAPA, calcularAvanceConductor, calcularRacha, etapaPorOrdinarias, fechaEnPalabras } from './avance'
 
 let casos = 0
@@ -160,6 +162,83 @@ verificar('KAI-125: fecha en palabras para la tarjeta del conductor', () => {
   assert.equal(fechaEnPalabras('2027-01-31'), 'enero de 2027')
   assert.equal(fechaEnPalabras(null), null)
   assert.equal(etapaPorOrdinarias(60, 60), 'COMPLETO')
+})
+
+// KAI-127 — Estado de cuenta (SDD estado-cuenta-conductor, R5/R6, AC-03).
+const PAGOS_EC = [
+  { numero_semana: 1, tipo_pago: 'NORMAL' as const, monto_pagado: 490000, fecha_pago: '2026-10-20T01:00:00+00:00' }, // 19-10 en Bogotá
+  { numero_semana: 2, tipo_pago: 'APLAZATORIA' as const, monto_pagado: 200000, fecha_pago: '2026-10-27T15:00:00+00:00' },
+  { numero_semana: 3, tipo_pago: 'NO_PAGO' as const, monto_pagado: 0, fecha_pago: null }, // inicio de la semana 3: 27-10
+  { numero_semana: 4, tipo_pago: 'NORMAL' as const, monto_pagado: 490000, fecha_pago: '2026-11-10T15:00:00+00:00' },
+]
+const ABONOS_EC = [{ fecha_abono: '2026-11-05T15:00:00+00:00', valor_abono: 1000000 }]
+
+verificar('KAI-127: sin rango = desde la entrega hasta hoy, todos los registros y totales', () => {
+  const r = filtrarEstadoCuenta({ fechaAsignacion: ENTREGA, hoy: '2026-12-01', pagos: PAGOS_EC, abonos: ABONOS_EC })
+  assert.equal(r.entrega, '2026-10-13')
+  assert.equal(r.desde, '2026-10-13')
+  assert.equal(r.hasta, '2026-12-01')
+  assert.equal(r.rangoInvalido, false)
+  assert.equal(r.pagos.length, 4)
+  assert.equal(r.totalPagos, 1180000)
+  assert.equal(r.totalAbonos, 1000000)
+})
+
+verificar('KAI-127: fecha de pago en Bogotá y semana sin pago por el inicio de su semana', () => {
+  const r = filtrarEstadoCuenta({ fechaAsignacion: ENTREGA, hoy: '2026-12-01', pagos: PAGOS_EC, abonos: [] })
+  assert.equal(r.pagos[0].fecha, '2026-10-19')
+  assert.equal(r.pagos[2].fecha, '2026-10-27')
+})
+
+verificar('KAI-127: el rango filtra pagos y abonos (bordes incluidos)', () => {
+  const r = filtrarEstadoCuenta({ fechaAsignacion: ENTREGA, hoy: '2026-12-01', desde: '2026-10-27', hasta: '2026-11-05', pagos: PAGOS_EC, abonos: ABONOS_EC })
+  assert.deepEqual(r.pagos.map(p => p.numero_semana), [2, 3])
+  assert.equal(r.totalPagos, 200000)
+  assert.equal(r.abonos.length, 1)
+})
+
+verificar('KAI-127 AC-03: rango invertido = periodo completo y aviso', () => {
+  const r = filtrarEstadoCuenta({ fechaAsignacion: ENTREGA, hoy: '2026-12-01', desde: '2026-11-30', hasta: '2026-10-01', pagos: PAGOS_EC, abonos: ABONOS_EC })
+  assert.equal(r.rangoInvalido, true)
+  assert.equal(r.desde, '2026-10-13')
+  assert.equal(r.pagos.length, 4)
+})
+
+verificar('KAI-127: fechas mal formadas se ignoran; periodo sin registros da totales en cero', () => {
+  const r = filtrarEstadoCuenta({ fechaAsignacion: ENTREGA, hoy: '2026-12-01', desde: 'x', hasta: '2026-10-15', pagos: PAGOS_EC, abonos: ABONOS_EC })
+  assert.equal(r.desde, '2026-10-13')
+  assert.equal(r.pagos.length, 0)
+  assert.equal(r.totalPagos, 0)
+  assert.equal(r.totalAbonos, 0)
+})
+
+// KAI-128 — Acumulado para la compra y saldo (SDD valores-compra-contrato, D2-D4).
+verificar('KAI-128: sin valores registrados no hay cálculo', () => {
+  assert.equal(calcularCompra({ valorVenta: null, aporteAhorroSemanal: 90000, aporteBonoSemanal: 120000, ordinariasPagadas: 3, totalAbonos: 0 }), null)
+  assert.equal(calcularCompra({ valorVenta: 32000000, aporteAhorroSemanal: null, aporteBonoSemanal: 120000, ordinariasPagadas: 3, totalAbonos: 0 }), null)
+})
+
+verificar('KAI-128: ejemplo del contrato (152 semanas × $210.000 → saldo $80.000)', () => {
+  const r = calcularCompra({ valorVenta: 32000000, aporteAhorroSemanal: 90000, aporteBonoSemanal: 120000, ordinariasPagadas: 152, totalAbonos: 0 })!
+  assert.equal(r.aporteSemanal, 210000)
+  assert.equal(r.acumuladoAhorro, 13680000)
+  assert.equal(r.acumuladoBono, 18240000)
+  assert.equal(r.acumulado, 31920000)
+  assert.equal(r.saldo, 80000)
+})
+
+verificar('KAI-128 D3: solo suman las semanas ordinarias (aplazatorias y sin pago no) y los abonos', () => {
+  const pagos = semanas('NORMAL', 'APLAZATORIA', 'NORMAL', 'NO_PAGO', 'NORMAL')
+  const { ordinariasPagadas } = calcularPlazo({ semanasPactadas: 152, fechaAsignacion: ENTREGA, pagos })
+  const r = calcularCompra({ valorVenta: 32000000, aporteAhorroSemanal: 90000, aporteBonoSemanal: 120000, ordinariasPagadas, totalAbonos: 1000000 })!
+  assert.equal(r.acumulado, 3 * 210000 + 1000000)
+  assert.equal(r.saldo, 32000000 - 1630000)
+})
+
+verificar('KAI-128: el saldo nunca es negativo y el avance no pasa de 100 %', () => {
+  const r = calcularCompra({ valorVenta: 1000000, aporteAhorroSemanal: 90000, aporteBonoSemanal: 120000, ordinariasPagadas: 10, totalAbonos: 0 })!
+  assert.equal(r.saldo, 0)
+  assert.equal(r.avance, 1)
 })
 
 console.log(`\n${casos} casos del plazo del contrato verificados.`)
