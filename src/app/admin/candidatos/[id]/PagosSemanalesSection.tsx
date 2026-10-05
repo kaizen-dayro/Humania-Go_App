@@ -10,6 +10,7 @@ import { createClient } from '@/utils/supabase/client'
 import { fechaHoyBogota, formatearFechaAdmin, formatearSoloFecha } from '@/lib/format'
 import { calcularAvanceConductor } from '@/lib/domain/contrato/avance'
 import { DepositoInicialSection } from './DepositoInicialSection'
+import { ValoresCompraSection } from './ValoresCompraSection'
 import { ProgresoConductor } from './ProgresoConductor'
 import {
   actualizarTerminosContrato,
@@ -605,6 +606,15 @@ export function PagosSemanalesSection({
           ))}
         </dl>
       </div>
+
+      {/* COMPRA DEL VEHICULO (KAI-128) */}
+      <ValoresCompraSection
+        candidatoId={candidatoId}
+        assignmentId={assignmentId}
+        soloLectura={soloLectura}
+        ordinariasPagadas={plazo.ordinariasPagadas}
+        totalAbonos={abonos.reduce((s, a) => s + Number(a.valor_abono || 0), 0)}
+      />
 
       {/* DEPOSITO INICIAL (KAI-122) */}
       <DepositoInicialSection candidatoId={candidatoId} assignmentId={assignmentId} soloLectura={soloLectura} />

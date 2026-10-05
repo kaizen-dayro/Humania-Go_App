@@ -269,6 +269,12 @@ export default async function CandidatoDetail({ params, searchParams }: { params
                 )}
               </p>
             )}
+            {/* KAI-127: estado de cuenta para entregar al conductor (spec R1). */}
+            {candidato.estado === 'SELECCIONADO' && candidato.estatus_contractual && ultimaAsignacion && (
+              <Link href={`/admin/candidatos/${candidato.id}/estado-cuenta`} className="inline-block mt-3">
+                <Button type="button" variant="outline" size="sm" className="rounded-none">Estado de cuenta (PDF)</Button>
+              </Link>
+            )}
           </div>
         </div>
 
