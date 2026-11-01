@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict'
 import { calcularPlazo, fechaBogota, sumarDias, type PagoParaPlazo } from './plazo'
 import { filtrarEstadoCuenta } from './estadoCuenta'
+import { fechaPagoABogota, formatearDiaBogota } from './fechaPago'
 import { calcularCompra } from './compra'
 import { MENSAJES_ETAPA, calcularAvanceConductor, calcularRacha, etapaPorOrdinarias, fechaEnPalabras } from './avance'
 
@@ -239,6 +240,47 @@ verificar('KAI-128: el saldo nunca es negativo y el avance no pasa de 100 %', ()
   const r = calcularCompra({ valorVenta: 1000000, aporteAhorroSemanal: 90000, aporteBonoSemanal: 120000, ordinariasPagadas: 10, totalAbonos: 0 })!
   assert.equal(r.saldo, 0)
   assert.equal(r.avance, 1)
+})
+
+// KAI-135 — La fecha de pago y de abono se guarda como el mediodía de Bogotá (SDD fecha-pago-bogota, AC-01 a AC-05).
+verificar('KAI-135 AC-01: un YYYY-MM-DD se guarda como el mediodía de Bogotá (17:00 UTC)', () => {
+  assert.equal(fechaPagoABogota('2026-10-27'), '2026-10-27T12:00:00-05:00')
+  assert.equal(new Date(fechaPagoABogota('2026-10-27')).toISOString(), '2026-10-27T17:00:00.000Z')
+})
+
+verificar('KAI-135: lo que ya trae hora o no es una fecha se devuelve igual; vacío sigue siendo NULL', () => {
+  assert.equal(fechaPagoABogota('2026-10-27T10:00:00-05:00'), '2026-10-27T10:00:00-05:00')
+  assert.equal(fechaPagoABogota(''), '')
+  assert.equal(fechaPagoABogota(null), null)
+})
+
+verificar('KAI-135 AC-01/AC-04: el día guardado es el mismo que se muestra y se precarga (incluye fin de año)', () => {
+  for (const dia of ['2026-10-27', '2026-12-31', '2027-01-01', '2028-02-29']) {
+    const guardado = new Date(fechaPagoABogota(dia)).toISOString()
+    assert.equal(fechaBogota(guardado), dia)
+    const [a, m, d] = dia.split('-')
+    assert.equal(formatearDiaBogota(guardado), `${d}-${m}-${a}`)
+  }
+})
+
+verificar('KAI-135: formatearDiaBogota muestra DD-MM-YYYY y tolera vacíos o inválidos', () => {
+  assert.equal(formatearDiaBogota('2026-10-27T17:00:00+00:00'), '27-10-2026')
+  assert.equal(formatearDiaBogota(null), null)
+  assert.equal(formatearDiaBogota(undefined), null)
+  assert.equal(formatearDiaBogota(''), null)
+  assert.equal(formatearDiaBogota('no es fecha'), null)
+})
+
+verificar('KAI-135 R4: una fila antigua a medianoche UTC se ve un día antes hasta que 00090 la corrige', () => {
+  assert.equal(formatearDiaBogota('2026-10-27T00:00:00+00:00'), '26-10-2026')
+  assert.equal(formatearDiaBogota('2026-10-27T17:00:00+00:00'), '27-10-2026')
+})
+
+verificar('KAI-135 AC-05: el estado de cuenta incluye el pago del 27-10 en un rango que empieza ese día', () => {
+  const pagos = [{ numero_semana: 2, tipo_pago: 'APLAZATORIA' as const, monto_pagado: 200000, fecha_pago: new Date(fechaPagoABogota('2026-10-27')).toISOString() }]
+  const r = filtrarEstadoCuenta({ fechaAsignacion: ENTREGA, hoy: '2026-12-01', desde: '2026-10-27', hasta: '2026-10-27', pagos, abonos: [] })
+  assert.equal(r.pagos.length, 1)
+  assert.equal(r.pagos[0].fecha, '2026-10-27')
 })
 
 console.log(`\n${casos} casos del plazo del contrato verificados.`)

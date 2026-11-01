@@ -3,6 +3,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
+import { fechaPagoABogota } from '@/lib/domain/contrato/fechaPago'
 
 /**
  * Cliente con Secret key: exclusivamente server-side, para URLs firmadas
@@ -69,7 +70,7 @@ export async function registrarPagoSemanal(
     p_numero_semana: numeroSemana,
     p_tipo_pago: tipoPago,
     p_monto_pagado: montoPagado,
-    p_fecha_pago: fechaPago,
+    p_fecha_pago: fechaPagoABogota(fechaPago),
     p_observaciones: observaciones?.trim() || null,
   })
 
@@ -111,7 +112,7 @@ export async function corregirPagoSemanal(
     p_pago_id: pagoId,
     p_tipo_pago: tipoPago,
     p_monto_pagado: montoPagado,
-    p_fecha_pago: fechaPago,
+    p_fecha_pago: fechaPagoABogota(fechaPago),
     p_observaciones: observaciones?.trim() || null,
     p_motivo: motivo.trim(),
   })
@@ -219,7 +220,7 @@ export async function registrarAbonoExtraordinario(
 
   const { error } = await supabase.rpc('registrar_abono_extraordinario', {
     p_asset_assignment_history_id: assignmentId,
-    p_fecha_abono: fechaAbono,
+    p_fecha_abono: fechaPagoABogota(fechaAbono),
     p_valor_abono: valorAbono,
     p_observaciones: observaciones?.trim() || null,
   })
@@ -256,7 +257,7 @@ export async function corregirAbonoExtraordinario(
 
   const { error } = await supabase.rpc('corregir_abono_extraordinario', {
     p_abono_id: abonoId,
-    p_fecha_abono: fechaAbono,
+    p_fecha_abono: fechaPagoABogota(fechaAbono),
     p_valor_abono: valorAbono,
     p_observaciones: observaciones?.trim() || null,
     p_motivo: motivo.trim(),

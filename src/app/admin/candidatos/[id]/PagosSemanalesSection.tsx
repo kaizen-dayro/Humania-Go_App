@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { createClient } from '@/utils/supabase/client'
 import { fechaHoyBogota, formatearFechaAdmin, formatearSoloFecha } from '@/lib/format'
 import { calcularAvanceConductor } from '@/lib/domain/contrato/avance'
+import { formatearDiaBogota } from '@/lib/domain/contrato/fechaPago'
+import { fechaBogota } from '@/lib/domain/contrato/plazo'
 import { DepositoInicialSection } from './DepositoInicialSection'
 import { ValoresCompraSection } from './ValoresCompraSection'
 import { ProgresoConductor } from './ProgresoConductor'
@@ -312,7 +314,7 @@ export function PagosSemanalesSection({
     setPagoACorregir(pago)
     setCorrTipoPago(pago.tipo_pago)
     setCorrMonto(String(pago.monto_pagado))
-    setCorrFecha(pago.fecha_pago ? pago.fecha_pago.slice(0, 10) : '')
+    setCorrFecha(pago.fecha_pago ? fechaBogota(pago.fecha_pago) ?? '' : '')
     setCorrObservaciones(pago.observaciones || '')
     setCorrMotivo('')
     setErrorCorreccion('')
@@ -365,7 +367,7 @@ export function PagosSemanalesSection({
 
   function abrirCorreccionAbono(abono: Abono) {
     setAbonoACorregir(abono)
-    setCorrFechaAbono(abono.fecha_abono.slice(0, 10))
+    setCorrFechaAbono(fechaBogota(abono.fecha_abono) ?? '')
     setCorrValorAbono(String(abono.valor_abono))
     setCorrObservacionesAbono(abono.observaciones || '')
     setCorrMotivoAbono('')
@@ -684,7 +686,7 @@ export function PagosSemanalesSection({
                     </span>
                   </td>
                   <td className="py-2 pr-3 tabular-nums">${p.monto_pagado.toLocaleString('es-CO')}</td>
-                  <td className="py-2 pr-3">{formatearFechaAdmin(p.fecha_pago) || '—'}</td>
+                  <td className="py-2 pr-3">{formatearDiaBogota(p.fecha_pago) || '—'}</td>
                   <td className="py-2 pr-3">
                     <div className="flex flex-wrap gap-2">
                       {p.evidencia.map(ev => (
@@ -806,7 +808,7 @@ export function PagosSemanalesSection({
               <tbody>
                 {abonos.map(a => (
                   <tr key={a.id} className="border-b border-neutral-100 align-top">
-                    <td className="py-2 pr-3">{formatearFechaAdmin(a.fecha_abono) || '—'}</td>
+                    <td className="py-2 pr-3">{formatearDiaBogota(a.fecha_abono) || '—'}</td>
                     <td className="py-2 pr-3 tabular-nums">${a.valor_abono.toLocaleString('es-CO')}</td>
                     <td className="py-2 pr-3 text-humania-gray/80">{a.observaciones || '—'}</td>
                     <td className="py-2 pr-3 text-xs text-humania-gray/70">{a.registrado_por_email}</td>
