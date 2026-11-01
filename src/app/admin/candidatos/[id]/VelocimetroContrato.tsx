@@ -106,6 +106,7 @@ export function VelocimetroContrato({
           </ol>
           <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-humania-gray">
             <span>Aplazatorias: <b className="text-humania-blue">{plazo.aplazatorias}</b></span>
+            <span>Reconocimiento: <b className="text-humania-blue">{plazo.reconocimientos}</b></span>
             <span>Sin pago: <b className="text-humania-blue">{plazo.sinPago}</b></span>
             <span>Racha actual: <b className="text-humania-blue">{avance.racha} semanas</b></span>
           </div>

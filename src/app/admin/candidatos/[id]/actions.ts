@@ -56,7 +56,7 @@ export async function registrarPagoSemanal(
   candidatoId: string,
   assignmentId: string,
   numeroSemana: number,
-  tipoPago: 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO',
+  tipoPago: 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO' | 'RECONOCIMIENTO',
   montoPagado: number,
   fechaPago: string | null,
   observaciones: string
@@ -94,7 +94,7 @@ export async function registrarPagoSemanal(
 export async function corregirPagoSemanal(
   candidatoId: string,
   pagoId: string,
-  tipoPago: 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO',
+  tipoPago: 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO' | 'RECONOCIMIENTO',
   montoPagado: number,
   fechaPago: string | null,
   observaciones: string,

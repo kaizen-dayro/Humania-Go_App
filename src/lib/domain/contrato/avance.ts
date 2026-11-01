@@ -28,7 +28,7 @@ export interface AvanceConductor {
   etapa: EtapaConductor | null
   /** Semanas NORMAL consecutivas desde la semana registrada más alta hacia atrás. */
   racha: number
-  /** Una entrada por semana del plazo ajustado (vacío sin semanas pactadas). */
+  /** Una entrada por semana del plazo ajustado (vacío sin semanas pactadas). Si hay reconocimiento, la primera es la semana 0, -1 o -2. */
   semanas: EstadoSemana[]
 }
 
@@ -86,7 +86,7 @@ export function calcularAvanceConductor(entrada: EntradaPlazo): AvanceConductor 
 
   const porSemana = new Map(entrada.pagos.map(p => [p.numero_semana, p.tipo_pago]))
   const semanas: EstadoSemana[] = []
-  for (let s = 1; s <= plazo.plazoAjustado; s++) {
+  for (let s = 1 - plazo.reconocimientos; s <= plazo.plazoAjustado - plazo.reconocimientos; s++) {
     semanas.push(porSemana.get(s) ?? 'POR_RECORRER')
   }
 

@@ -5,7 +5,7 @@
 // vigentes. La autoridad de las reglas que deben cumplirse siempre (límite de
 // aplazatorias) es PostgreSQL (migración 00081); esto es solo lectura.
 
-export type TipoPagoSemanal = 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO'
+export type TipoPagoSemanal = 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO' | 'RECONOCIMIENTO'
 
 export interface PagoParaPlazo {
   numero_semana: number
@@ -22,9 +22,11 @@ export interface EntradaPlazo {
 
 export interface ResultadoPlazo {
   aplazatorias: number
+  /** KAI-136: semanas de reconocimiento (semanas 0, -1 y -2), antes de la semana 1. */
+  reconocimientos: number
   sinPago: number
   ordinariasPagadas: number
-  /** R3: pactadas + aplazatorias + sin pago. `null` sin semanas pactadas. */
+  /** R3 (+ KAI-136): pactadas + aplazatorias + reconocimientos + sin pago. `null` sin semanas pactadas. */
   plazoAjustado: number | null
   /** R4: máx(0, pactadas − ordinarias). `null` sin semanas pactadas. */
   restantes: number | null
@@ -53,18 +55,19 @@ export function sumarDias(fecha: string, dias: number): string {
 
 export function calcularPlazo({ semanasPactadas, fechaAsignacion, pagos }: EntradaPlazo): ResultadoPlazo {
   const aplazatorias = pagos.filter(p => p.tipo_pago === 'APLAZATORIA').length
+  const reconocimientos = pagos.filter(p => p.tipo_pago === 'RECONOCIMIENTO').length
   const sinPago = pagos.filter(p => p.tipo_pago === 'NO_PAGO').length
   const ordinariasPagadas = pagos.filter(p => p.tipo_pago === 'NORMAL').length
 
   const pactadasValidas = semanasPactadas !== null && Number.isInteger(semanasPactadas) && semanasPactadas >= 1
   if (!pactadasValidas) {
-    return { aplazatorias, sinPago, ordinariasPagadas, plazoAjustado: null, restantes: null, fechaEstimadaFin: null }
+    return { aplazatorias, reconocimientos, sinPago, ordinariasPagadas, plazoAjustado: null, restantes: null, fechaEstimadaFin: null }
   }
 
-  const plazoAjustado = semanasPactadas + aplazatorias + sinPago
+  const plazoAjustado = semanasPactadas + aplazatorias + reconocimientos + sinPago
   const restantes = Math.max(0, semanasPactadas - ordinariasPagadas)
   const inicio = fechaBogota(fechaAsignacion)
   const fechaEstimadaFin = inicio ? sumarDias(inicio, plazoAjustado * 7) : null
 
-  return { aplazatorias, sinPago, ordinariasPagadas, plazoAjustado, restantes, fechaEstimadaFin }
+  return { aplazatorias, reconocimientos, sinPago, ordinariasPagadas, plazoAjustado, restantes, fechaEstimadaFin }
 }
