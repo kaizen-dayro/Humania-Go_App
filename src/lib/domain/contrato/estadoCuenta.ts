@@ -56,7 +56,7 @@ export function filtrarEstadoCuenta({ fechaAsignacion, hoy, desde, hasta, pagos,
 
   // R5: un pago entra por su fecha de pago; una semana sin fecha, por el inicio de esa semana.
   const pagosPeriodo = pagos
-    .map(p => ({ ...p, fecha: (p.fecha_pago ? fechaBogota(p.fecha_pago) : sumarDias(entrega, 7 * (p.numero_semana - 1))) as string }))
+    .map(p => ({ ...p, fecha: (p.fecha_pago ? fechaBogota(p.fecha_pago) : (p.numero_semana <= 0 ? entrega : sumarDias(entrega, 7 * (p.numero_semana - 1)))) as string }))
     .filter(p => enRango(p.fecha))
   const abonosPeriodo = abonos
     .map(a => ({ ...a, fecha: fechaBogota(a.fecha_abono) as string }))

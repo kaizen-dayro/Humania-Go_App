@@ -16,6 +16,7 @@ const VERDE = '#1D9E75'
 const COLOR_SEMANA: Record<EstadoSemana, string> = {
   NORMAL: VERDE,
   APLAZATORIA: '#EF9F27',
+  RECONOCIMIENTO: '#378ADD',
   NO_PAGO: '#E24B4A',
   POR_RECORRER: '#E5E3DC',
 }
@@ -23,6 +24,7 @@ const COLOR_SEMANA: Record<EstadoSemana, string> = {
 const LEYENDA: Array<[EstadoSemana, string]> = [
   ['NORMAL', 'Pagada'],
   ['APLAZATORIA', 'Aplazatoria'],
+  ['RECONOCIMIENTO', 'Reconocimiento'],
   ['NO_PAGO', 'Sin pago'],
   ['POR_RECORRER', 'Por recorrer'],
 ]
@@ -117,7 +119,7 @@ export function CaminoCarroPropio({ nombre, avance }: { nombre: string; avance: 
         </div>
         <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(10px, 1fr))' }}>
           {avance.semanas.map((estado, i) => (
-            <div key={i} title={`Semana ${i + 1}`} className="aspect-square rounded-[2px]" style={{ background: COLOR_SEMANA[estado] }} />
+            <div key={i} title={estado === 'RECONOCIMIENTO' ? 'Reconocimiento' : `Semana ${i + 1 - plazo.reconocimientos}`} className="aspect-square rounded-[2px]" style={{ background: COLOR_SEMANA[estado] }} />
           ))}
         </div>
         <div className="mt-2 flex flex-wrap gap-4 text-xs text-humania-gray/80">

@@ -71,7 +71,7 @@ verificar('La fecha de entrega se toma en Bogotá (una entrega a las 21:00 de Bo
 
 verificar('9.1: sin semanas pactadas, solo conteos (sin plazo, restantes ni fecha)', () => {
   const r = calcularPlazo({ semanasPactadas: null, fechaAsignacion: ENTREGA, pagos: semanas('NORMAL', 'APLAZATORIA', 'NO_PAGO') })
-  assert.deepEqual(r, { aplazatorias: 1, sinPago: 1, ordinariasPagadas: 1, plazoAjustado: null, restantes: null, fechaEstimadaFin: null })
+  assert.deepEqual(r, { aplazatorias: 1, reconocimientos: 0, sinPago: 1, ordinariasPagadas: 1, plazoAjustado: null, restantes: null, fechaEstimadaFin: null })
 })
 
 verificar('9.1: semanas pactadas inválidas (0, negativas, decimales) se tratan como no definidas', () => {
@@ -281,6 +281,80 @@ verificar('KAI-135 AC-05: el estado de cuenta incluye el pago del 27-10 en un ra
   const r = filtrarEstadoCuenta({ fechaAsignacion: ENTREGA, hoy: '2026-12-01', desde: '2026-10-27', hasta: '2026-10-27', pagos, abonos: [] })
   assert.equal(r.pagos.length, 1)
   assert.equal(r.pagos[0].fecha, '2026-10-27')
+})
+
+// KAI-136 — Pago de Reconocimiento: semanas 0, -1 y -2, antes de la semana 1 (SDD pago-reconocimiento, AC-04/AC-05/AC-14).
+const R = (numero_semana: number) => ({ numero_semana, tipo_pago: 'RECONOCIMIENTO' as const })
+const N = (numero_semana: number) => ({ numero_semana, tipo_pago: 'NORMAL' as const })
+const A = (numero_semana: number) => ({ numero_semana, tipo_pago: 'APLAZATORIA' as const })
+
+verificar('KAI-136 AC-04: cada reconocimiento suma una semana al plazo y a la fecha estimada de fin', () => {
+  const sin = calcularPlazo({ semanasPactadas: 152, fechaAsignacion: ENTREGA, pagos: [N(1), A(2)] })
+  const con = calcularPlazo({ semanasPactadas: 152, fechaAsignacion: ENTREGA, pagos: [R(0), N(1), A(2)] })
+  assert.equal(sin.plazoAjustado, 153)
+  assert.equal(con.reconocimientos, 1)
+  assert.equal(con.plazoAjustado, 154)
+  assert.equal(con.fechaEstimadaFin, sumarDias('2026-10-13', 154 * 7))
+  const tres = calcularPlazo({ semanasPactadas: 152, fechaAsignacion: ENTREGA, pagos: [R(-2), R(-1), R(0), N(1)] })
+  assert.equal(tres.plazoAjustado, 155)
+})
+
+verificar('KAI-136 AC-05: el reconocimiento no cuenta como semana ordinaria ni como aplazatoria o sin pago', () => {
+  const r = calcularPlazo({ semanasPactadas: 152, fechaAsignacion: ENTREGA, pagos: [R(0), N(1), A(2)] })
+  assert.equal(r.ordinariasPagadas, 1)
+  assert.equal(r.aplazatorias, 1)
+  assert.equal(r.sinPago, 0)
+  assert.equal(r.restantes, 151)
+})
+
+verificar('KAI-136 AC-05: no suma al avance, al ahorro ni al bono', () => {
+  const avance = calcularAvanceConductor({ semanasPactadas: 5, fechaAsignacion: ENTREGA, pagos: [R(-1), R(0), N(1)] })
+  assert.equal(avance.avance, 0.2)
+  const { ordinariasPagadas } = avance.plazo
+  const c = calcularCompra({ valorVenta: 32000000, aporteAhorroSemanal: 90000, aporteBonoSemanal: 120000, ordinariasPagadas, totalAbonos: 0 })!
+  assert.equal(c.acumulado, 210000)
+})
+
+verificar('KAI-136: la cuadrícula arranca en la primera semana de reconocimiento y tiene una entrada por semana del plazo', () => {
+  const a = calcularAvanceConductor({ semanasPactadas: 5, fechaAsignacion: ENTREGA, pagos: [R(-1), R(0), N(1)] })
+  assert.equal(a.plazo.plazoAjustado, 7)
+  assert.deepEqual(a.semanas, ['RECONOCIMIENTO', 'RECONOCIMIENTO', 'NORMAL', 'POR_RECORRER', 'POR_RECORRER', 'POR_RECORRER', 'POR_RECORRER'])
+  const sola = calcularAvanceConductor({ semanasPactadas: 3, fechaAsignacion: ENTREGA, pagos: [R(0), N(1), A(2)] })
+  assert.deepEqual(sola.semanas, ['RECONOCIMIENTO', 'NORMAL', 'APLAZATORIA', 'POR_RECORRER', 'POR_RECORRER'])
+  assert.equal(sola.semanas.length, sola.plazo.plazoAjustado)
+})
+
+verificar('KAI-136: sin reconocimiento la cuadrícula no cambia', () => {
+  const a = calcularAvanceConductor({ semanasPactadas: 3, fechaAsignacion: ENTREGA, pagos: semanas('NORMAL', 'APLAZATORIA') })
+  assert.deepEqual(a.semanas, ['NORMAL', 'APLAZATORIA', 'POR_RECORRER', 'POR_RECORRER'])
+})
+
+verificar('KAI-136: la racha cuenta semanas NORMAL desde la 1 y el reconocimiento no la corta ni la suma', () => {
+  assert.equal(calcularRacha([R(0), N(1), N(2)]), 2)
+  assert.equal(calcularRacha([R(-1), R(0)]), 0)
+})
+
+verificar('KAI-136 AC-14 / D8: el estado de cuenta muestra el valor del reconocimiento y lo suma al total de pagos', () => {
+  const pagos = [
+    { numero_semana: 0, tipo_pago: 'RECONOCIMIENTO' as const, monto_pagado: 222000, fecha_pago: new Date(fechaPagoABogota('2026-10-13')).toISOString() },
+    { numero_semana: 1, tipo_pago: 'NORMAL' as const, monto_pagado: 490000, fecha_pago: new Date(fechaPagoABogota('2026-10-20')).toISOString() },
+    { numero_semana: 2, tipo_pago: 'APLAZATORIA' as const, monto_pagado: 200000, fecha_pago: new Date(fechaPagoABogota('2026-10-27')).toISOString() },
+  ]
+  const r = filtrarEstadoCuenta({ fechaAsignacion: ENTREGA, hoy: '2026-12-01', pagos, abonos: [] })
+  assert.deepEqual(r.pagos.map(p => [p.numero_semana, p.tipo_pago, p.monto_pagado, p.fecha]), [
+    [0, 'RECONOCIMIENTO', 222000, '2026-10-13'],
+    [1, 'NORMAL', 490000, '2026-10-20'],
+    [2, 'APLAZATORIA', 200000, '2026-10-27'],
+  ])
+  assert.equal(r.totalPagos, 912000)
+  const solo = filtrarEstadoCuenta({ fechaAsignacion: ENTREGA, hoy: '2026-12-01', desde: '2026-10-13', hasta: '2026-10-13', pagos, abonos: [] })
+  assert.deepEqual(solo.pagos.map(p => p.numero_semana), [0])
+  assert.equal(solo.totalPagos, 222000)
+})
+
+verificar('KAI-136: un reconocimiento sin fecha de pago toma la fecha de la entrega (ocurre después de entregar el carro)', () => {
+  const r = filtrarEstadoCuenta({ fechaAsignacion: ENTREGA, hoy: '2026-12-01', pagos: [{ numero_semana: 0, tipo_pago: 'RECONOCIMIENTO' as const, monto_pagado: 100000, fecha_pago: null }], abonos: [] })
+  assert.equal(r.pagos[0].fecha, '2026-10-13')
 })
 
 console.log(`\n${casos} casos del plazo del contrato verificados.`)

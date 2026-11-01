@@ -29,10 +29,11 @@ import {
   getFechaInicioAbonosHistorial,
 } from './actions'
 
-const TIPOS_PAGO: { value: 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO'; label: string }[] = [
+const TIPOS_PAGO: { value: 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO' | 'RECONOCIMIENTO'; label: string }[] = [
   { value: 'NORMAL', label: 'Normal' },
   { value: 'APLAZATORIA', label: 'Aplazatoria' },
   { value: 'NO_PAGO', label: 'No pago' },
+  { value: 'RECONOCIMIENTO', label: 'Reconocimiento' },
 ]
 
 const TIPOS_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp']
@@ -50,7 +51,7 @@ type Evidencia = {
 type Pago = {
   id: string
   numero_semana: number
-  tipo_pago: 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO'
+  tipo_pago: 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO' | 'RECONOCIMIENTO'
   monto_pagado: number
   fecha_pago: string | null
   observaciones: string | null
@@ -86,6 +87,7 @@ function labelTipoPago(t: string) {
 function badgeTipoPago(t: string) {
   if (t === 'NORMAL') return 'bg-green-50 text-green-700 border-green-200'
   if (t === 'APLAZATORIA') return 'bg-amber-50 text-amber-700 border-amber-200'
+  if (t === 'RECONOCIMIENTO') return 'bg-sky-50 text-sky-700 border-sky-200'
   return 'bg-red-50 text-red-700 border-red-200'
 }
 
@@ -175,14 +177,14 @@ export function PagosSemanalesSection({
   const [terminosGuardados, setTerminosGuardados] = useState(false)
 
   const [numeroSemana, setNumeroSemana] = useState(() => String(semanaSugerida(fechaAsignacion)))
-  const [tipoPago, setTipoPago] = useState<'NORMAL' | 'APLAZATORIA' | 'NO_PAGO'>('NORMAL')
+  const [tipoPago, setTipoPago] = useState<'NORMAL' | 'APLAZATORIA' | 'NO_PAGO' | 'RECONOCIMIENTO'>('NORMAL')
   const [montoPagado, setMontoPagado] = useState('')
   const [fechaPago, setFechaPago] = useState(() => fechaHoyBogota())
   const [observaciones, setObservaciones] = useState('')
   const [registrando, setRegistrando] = useState(false)
 
   const [pagoACorregir, setPagoACorregir] = useState<Pago | null>(null)
-  const [corrTipoPago, setCorrTipoPago] = useState<'NORMAL' | 'APLAZATORIA' | 'NO_PAGO'>('NORMAL')
+  const [corrTipoPago, setCorrTipoPago] = useState<'NORMAL' | 'APLAZATORIA' | 'NO_PAGO' | 'RECONOCIMIENTO'>('NORMAL')
   const [corrMonto, setCorrMonto] = useState('')
   const [corrFecha, setCorrFecha] = useState('')
   const [corrObservaciones, setCorrObservaciones] = useState('')
@@ -284,7 +286,13 @@ export function PagosSemanalesSection({
 
   async function registrarSemana() {
     setError('')
-    if (numeroSemana === '' || Number(numeroSemana) < 1) {
+    if (tipoPago === 'RECONOCIMIENTO') {
+      const semanaRec = Number(numeroSemana)
+      if (numeroSemana === '' || !Number.isInteger(semanaRec) || semanaRec < -2 || semanaRec > 0) {
+        setError('El reconocimiento solo se permite en las semanas 0, -1 y -2, de forma consecutiva.')
+        return
+      }
+    } else if (numeroSemana === '' || Number(numeroSemana) < 1) {
       setError('El número de semana debe ser 1 o mayor.')
       return
     }
@@ -306,7 +314,8 @@ export function PagosSemanalesSection({
     setMontoPagado('')
     setObservaciones('')
     setFechaPago(fechaHoyBogota())
-    setNumeroSemana(String(Number(numeroSemana) + 1))
+    if (tipoPago === 'RECONOCIMIENTO') setTipoPago('NORMAL')
+    setNumeroSemana(String(Math.max(1, Number(numeroSemana) + 1)))
     await cargarPagos()
   }
 
@@ -584,7 +593,7 @@ export function PagosSemanalesSection({
       {/* PLAZO DEL CONTRATO (KAI-121) */}
       <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-5 space-y-3">
         <h4 className="text-sm font-bold text-humania-gray/50 uppercase tracking-widest">Plazo del contrato</h4>
-        <p className="text-xs text-humania-gray/70">Cada semana aplazatoria o sin pago alarga el plazo una semana.</p>
+        <p className="text-xs text-humania-gray/70">Cada semana aplazatoria, de reconocimiento o sin pago alarga el plazo una semana.</p>
         {plazo.plazoAjustado === null && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3 flex items-start gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -595,6 +604,7 @@ export function PagosSemanalesSection({
           {[
             ['Semanas pactadas', semanasPactadasGuardadas],
             ['Aplazatorias registradas', plazo.aplazatorias],
+            ['Semanas de reconocimiento registradas', plazo.reconocimientos],
             ['Semanas sin pago registradas', plazo.sinPago],
             ['Plazo ajustado', plazo.plazoAjustado],
             ['Semanas ordinarias pagadas', plazo.ordinariasPagadas],
@@ -628,13 +638,18 @@ export function PagosSemanalesSection({
           <div className="grid sm:grid-cols-5 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-humania-gray">Semana</label>
-              <Input type="number" min="1" value={numeroSemana} onChange={(e) => setNumeroSemana(e.target.value)} />
+              <Input type="number" min={tipoPago === 'RECONOCIMIENTO' ? -2 : 1} max={tipoPago === 'RECONOCIMIENTO' ? 0 : undefined} value={numeroSemana} onChange={(e) => setNumeroSemana(e.target.value)} />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-humania-gray">Tipo de pago</label>
               <select
                 value={tipoPago}
-                onChange={(e) => setTipoPago(e.target.value as 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO')}
+                onChange={(e) => {
+                  const nuevo = e.target.value as 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO' | 'RECONOCIMIENTO'
+                  setTipoPago(nuevo)
+                  if (nuevo === 'RECONOCIMIENTO' && Number(numeroSemana) >= 1) setNumeroSemana('0')
+                  if (nuevo !== 'RECONOCIMIENTO' && Number(numeroSemana) <= 0) setNumeroSemana(String(semanaSugerida(fechaAsignacion)))
+                }}
                 className="h-10 w-full rounded-none border border-neutral-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand"
               >
                 {TIPOS_PAGO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -900,10 +915,10 @@ export function PagosSemanalesSection({
                 <label className="text-xs font-medium text-humania-gray">Tipo de pago</label>
                 <select
                   value={corrTipoPago}
-                  onChange={(e) => setCorrTipoPago(e.target.value as 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO')}
+                  onChange={(e) => setCorrTipoPago(e.target.value as 'NORMAL' | 'APLAZATORIA' | 'NO_PAGO' | 'RECONOCIMIENTO')}
                   className="h-10 w-full rounded-none border border-neutral-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-humania-sand"
                 >
-                  {TIPOS_PAGO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  {TIPOS_PAGO.filter(t => (t.value === 'RECONOCIMIENTO') === (pagoACorregir?.tipo_pago === 'RECONOCIMIENTO')).map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
               <div className="space-y-1">

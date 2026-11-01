@@ -21,6 +21,7 @@ import { BotonImprimir } from './BotonImprimir'
 const ETIQUETA_TIPO: Record<TipoPagoSemanal, string> = {
   NORMAL: 'Ordinaria',
   APLAZATORIA: 'Aplazatoria',
+  RECONOCIMIENTO: 'Reconocimiento',
   NO_PAGO: 'Sin pago',
 }
 
