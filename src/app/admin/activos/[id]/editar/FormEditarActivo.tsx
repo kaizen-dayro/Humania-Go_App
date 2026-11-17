@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { updateAsset } from '../../../actions'
 import { AlertCircle } from 'lucide-react'
 import { FotosActivo, type FotosActivoHandle } from './FotosActivo'
-import { ALPHANUMERIC_NO_SPACES, capitalizarPalabras } from '@/lib/validation'
+import { ALPHANUMERIC_NO_SPACES, NUMBERS_ONLY, capitalizarPalabras } from '@/lib/validation'
 import { evaluarVencimiento, diasHastaVencimiento, type EstadoVencimiento } from '@/lib/domain/vencimientosActivos'
 
 // Fase 21 (2026-08-26): alerta sutil de vencimiento -- mismo criterio de
@@ -39,6 +39,7 @@ function VencimientoBadge({ fecha }: { fecha: string | null | undefined }) {
 const CAMPOS_CONFIRMABLES: { key: string; label: string }[] = [
   { key: 'placa', label: 'Placa' },
   { key: 'color', label: 'Color' },
+  { key: 'anio_modelo', label: 'Año del modelo' },
   { key: 'vencimiento_tecnomecanica', label: 'Vencimiento Tecnomecánica' },
   { key: 'vencimiento_soat', label: 'Vencimiento SOAT' },
   { key: 'vencimiento_impuestos', label: 'Vencimiento Impuestos' },
@@ -48,6 +49,7 @@ const CAMPOS_CONFIRMABLES: { key: string; label: string }[] = [
 // envían -- lista separada para no mostrar un falso "cambio a vacío" de
 // esos dos campos en la pantalla de confirmación.
 const CAMPOS_CONFIRMABLES_BLOQUEADO: { key: string; label: string }[] = [
+  { key: 'anio_modelo', label: 'Año del modelo' },
   { key: 'vencimiento_tecnomecanica', label: 'Vencimiento Tecnomecánica' },
   { key: 'vencimiento_soat', label: 'Vencimiento SOAT' },
   { key: 'vencimiento_impuestos', label: 'Vencimiento Impuestos' },
@@ -61,6 +63,7 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
   const original = {
     placa: activo.placa || '',
     color: activo.color || '',
+    anio_modelo: activo.anio_modelo ? String(activo.anio_modelo) : '',
     vencimiento_tecnomecanica: activo.vencimiento_tecnomecanica || '',
     vencimiento_soat: activo.vencimiento_soat || '',
     vencimiento_impuestos: activo.vencimiento_impuestos || '',
@@ -97,6 +100,13 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
       requestAnimationFrame(() => input.setSelectionRange(cursorPos, cursorPos))
       return
     }
+    if (name === 'anio_modelo') {
+      // Analítica vehicular F1 (00090): solo dígitos, máximo 4. Editable
+      // también con el vehículo ASIGNADO (plan.md M.3, ajuste A5).
+      if (!NUMBERS_ONLY.test(value) || value.length > 4) return
+      setFormValues(prev => ({ ...prev, anio_modelo: value }))
+      return
+    }
     if (name === 'estado_fisico') {
       // Fase 13 (Documento 17/18): letras, espacios y puntuacion basica
       // (ampliado 2026-08-24 a pedido de QA), capitalizado palabra por
@@ -114,6 +124,10 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
   function handleInitialSubmit(formData: FormData) {
     if (!bloqueado && formValues.placa && formValues.placa.length !== 6) {
       setError('La placa debe tener exactamente 6 caracteres. En Colombia no existen placas con menos ni más caracteres.')
+      return
+    }
+    if (formValues.anio_modelo && formValues.anio_modelo.length !== 4) {
+      setError('El año del modelo debe tener 4 dígitos.')
       return
     }
     if (formValues.estado_fisico.trim().length < 10) {
@@ -248,6 +262,11 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
             <Row label="Color" value={activo.color} />
           </div>
 
+          <div className="space-y-2">
+            <Label className="text-humania-gray font-medium">Año del modelo (Opcional)</Label>
+            <Input name="anio_modelo" inputMode="numeric" value={formValues.anio_modelo} onChange={handleChange} placeholder="Ej. 2024" maxLength={4} className="rounded-none border-neutral-300 h-12" />
+          </div>
+
           <div className="grid md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label className="text-humania-gray font-medium">Vencimiento Tecnomecánica</Label>
@@ -325,6 +344,11 @@ export default function FormEditarActivo({ activo, candidatoAsignado }: { activo
       <div className="space-y-2">
         <Label className="text-humania-gray font-medium">Color (Opcional)</Label>
         <Input name="color" value={formValues.color} onChange={handleChange} placeholder="Ej. Rojo" className="rounded-none border-neutral-300 h-12" />
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-humania-gray font-medium">Año del modelo (Opcional)</Label>
+        <Input name="anio_modelo" inputMode="numeric" value={formValues.anio_modelo} onChange={handleChange} placeholder="Ej. 2024" maxLength={4} className="rounded-none border-neutral-300 h-12" />
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
