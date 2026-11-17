@@ -61,6 +61,13 @@ jobs:
       - name: Verificacion del plazo del contrato (KAI-121) -- bloqueante
         run: npm run verificar:contrato
 
+      # Analitica vehicular, Fase 1: tramos entre lecturas del odometro, proyeccion,
+      # proximo mantenimiento, alertas y resumen de viajes transcritos. Bloqueante como
+      # las demas suites del dominio (Dayro lo revisa en el PR que lo agrega). Mismo
+      # job por la misma razon: no cambiar el nombre del check.
+      - name: Verificacion de la analitica vehicular -- bloqueante
+        run: npm run verificar:analitica
+
       - name: Build (incluye tsc) -- bloqueante
         run: npm run build
         env:

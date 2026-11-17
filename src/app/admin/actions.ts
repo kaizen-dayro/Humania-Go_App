@@ -467,6 +467,18 @@ export async function updateAsset(activoId: string, formData: FormData) {
     return { success: false, error: 'El Estado Físico debe tener entre 10 y 111 caracteres (letras, espacios y puntuación básica).' }
   }
 
+  // Analítica vehicular F1 (00090): año del modelo, opcional. Editable
+  // también con el vehículo ASIGNADO/TRANSFERIDO (plan.md M.3, ajuste A5).
+  const anioModeloTexto = ((formData.get('anio_modelo') as string) || '').trim()
+  let anio_modelo: number | null = null
+  if (anioModeloTexto) {
+    const anioMaximo = new Date().getFullYear() + 1
+    anio_modelo = Number(anioModeloTexto)
+    if (!/^\d{4}$/.test(anioModeloTexto) || anio_modelo < 1950 || anio_modelo > anioMaximo) {
+      return { success: false, error: `El año del modelo debe estar entre 1950 y ${anioMaximo}.` }
+    }
+  }
+
   if (activoActual.estado === 'ASIGNADO' || activoActual.estado === 'TRANSFERIDO') {
     // KAI-28: modo de edición parcial -- únicamente estos 4 campos.
     // Un .update() con objeto parcial no toca placa/color/estado, que
@@ -477,7 +489,8 @@ export async function updateAsset(activoId: string, formData: FormData) {
         vencimiento_tecnomecanica: vencimiento_tecnomecanica || null,
         vencimiento_soat: vencimiento_soat || null,
         vencimiento_impuestos: vencimiento_impuestos || null,
-        estado_fisico: estado_fisico.trim()
+        estado_fisico: estado_fisico.trim(),
+        anio_modelo
       })
       .eq('id', activoId)
 
@@ -515,7 +528,8 @@ export async function updateAsset(activoId: string, formData: FormData) {
       vencimiento_tecnomecanica: vencimiento_tecnomecanica || null,
       vencimiento_soat: vencimiento_soat || null,
       vencimiento_impuestos: vencimiento_impuestos || null,
-      estado_fisico: estado_fisico.trim()
+      estado_fisico: estado_fisico.trim(),
+      anio_modelo
     })
     .eq('id', activoId)
 
